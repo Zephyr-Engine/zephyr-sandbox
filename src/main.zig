@@ -7,14 +7,14 @@ pub const std_options = runtime.recommended_std_options;
 const GameScene = struct {
     vao: runtime.VertexArray,
     shader: runtime.Shader,
-    rotation: f32,
+    transparency: f32,
 
     pub fn create(allocator: std.mem.Allocator) !*GameScene {
         const self = try allocator.create(GameScene);
         self.* = GameScene{
             .vao = undefined,
             .shader = undefined,
-            .rotation = 0.0,
+            .transparency = 0.0,
         };
         return self;
     }
@@ -44,18 +44,34 @@ const GameScene = struct {
 
         gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 3 * @sizeOf(f32), @ptrFromInt(0));
         gl.glEnableVertexAttribArray(0);
+
+        // Enable blending for transparency
+        gl.glEnable(gl.GL_BLEND);
+        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA);
     }
 
     pub fn onUpdate(self: *GameScene, delta_time: f32) void {
-        self.rotation += delta_time * 45.0; // 45 degrees per second
+        _ = delta_time;
 
         if (runtime.Input.isKeyPressed(.Escape)) {
             std.log.info("Escape key pressed, exiting...", .{});
         } else if (runtime.Input.isKeyHeld(.Space)) {
             std.log.info("Space key pressed!", .{});
+        } else if (runtime.Input.isKeyHeld(.A)) {
+            self.transparency += 0.05;
+            if (self.transparency > 1.0) {
+                self.transparency = 1.0;
+            }
+        } else if (runtime.Input.isKeyHeld(.D)) {
+            self.transparency -= 0.05;
+            if (self.transparency < 0.0) {
+                self.transparency = 0.0;
+            }
         }
 
         self.shader.bind();
+        self.shader.setUniform("r_color", f32, self.transparency);
+
         self.vao.bind();
         gl.glDrawElements(gl.GL_TRIANGLES, @intCast(self.vao.indexCount()), gl.GL_UNSIGNED_INT, @ptrFromInt(0));
         self.vao.unbind();
