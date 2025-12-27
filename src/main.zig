@@ -85,7 +85,11 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const application = try runtime.Application.init(allocator);
+    const application = try runtime.Application.init(allocator, .{
+        .width = 1920,
+        .height = 1080,
+        .title = "Zephyr Game",
+    });
     defer application.deinit(allocator);
 
     const game_scene = try GameScene.create(allocator);
