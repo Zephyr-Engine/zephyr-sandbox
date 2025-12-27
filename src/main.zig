@@ -49,6 +49,12 @@ const GameScene = struct {
     pub fn onUpdate(self: *GameScene, delta_time: f32) void {
         self.rotation += delta_time * 45.0; // 45 degrees per second
 
+        if (runtime.Input.isKeyPressed(.Escape)) {
+            std.log.info("Escape key pressed, exiting...", .{});
+        } else if (runtime.Input.isKeyHeld(.Space)) {
+            std.log.info("Space key pressed!", .{});
+        }
+
         self.shader.bind();
         self.vao.bind();
         gl.glDrawElements(gl.GL_TRIANGLES, @intCast(self.vao.indexCount()), gl.GL_UNSIGNED_INT, @ptrFromInt(0));
@@ -60,9 +66,6 @@ const GameScene = struct {
         switch (e) {
             .KeyPressed => |key| {
                 std.log.info("GameScene received key: {s}", .{@tagName(key)});
-            },
-            .MousePressed => |btn| {
-                std.log.info("GameScene received mouse: {s}", .{@tagName(btn)});
             },
             .WindowClose => {
                 std.log.info("GameScene shutting down...", .{});
