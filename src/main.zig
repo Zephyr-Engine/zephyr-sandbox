@@ -4,10 +4,13 @@ const gl = runtime.gl;
 
 pub const std_options = runtime.recommended_std_options;
 
+const movement_speed = 0.2;
+
 const GameScene = struct {
     vao: runtime.VertexArray,
     shader: runtime.Shader,
     transparency: f32,
+    position: runtime.Vec2,
 
     pub fn create(allocator: std.mem.Allocator) !*GameScene {
         const self = try allocator.create(GameScene);
@@ -15,6 +18,7 @@ const GameScene = struct {
             .vao = undefined,
             .shader = undefined,
             .transparency = 0.0,
+            .position = runtime.Vec2.new(0, 0),
         };
         return self;
     }
@@ -51,26 +55,33 @@ const GameScene = struct {
     }
 
     pub fn onUpdate(self: *GameScene, delta_time: f32) void {
-        _ = delta_time;
+        const speed = movement_speed * delta_time;
 
         if (runtime.Input.isKeyPressed(.Escape)) {
             std.log.info("Escape key pressed, exiting...", .{});
         } else if (runtime.Input.isKeyHeld(.Space)) {
             std.log.info("Space key pressed!", .{});
         } else if (runtime.Input.isKeyHeld(.A)) {
-            self.transparency += 0.05;
+            self.transparency += speed;
             if (self.transparency > 1.0) {
                 self.transparency = 1.0;
             }
+            self.position.x -= speed;
         } else if (runtime.Input.isKeyHeld(.D)) {
-            self.transparency -= 0.05;
+            self.transparency -= speed;
             if (self.transparency < 0.0) {
                 self.transparency = 0.0;
             }
+            self.position.x += speed;
+        } else if (runtime.Input.isKeyHeld(.W)) {
+            self.position.y += speed;
+        } else if (runtime.Input.isKeyHeld(.S)) {
+            self.position.y -= speed;
         }
 
         self.shader.bind();
-        self.shader.setUniform("r_color", f32, self.transparency);
+        self.shader.setUniform("r_color", self.transparency);
+        self.shader.setUniform("r_position", runtime.Vec3.new(self.position.x, self.position.y, 0));
 
         self.vao.bind();
         gl.glDrawElements(gl.GL_TRIANGLES, @intCast(self.vao.indexCount()), gl.GL_UNSIGNED_INT, @ptrFromInt(0));
