@@ -1,5 +1,6 @@
 const std = @import("std");
 const runtime = @import("zephyr_runtime");
+const Input = runtime.Input;
 const gl = runtime.gl;
 
 pub const std_options = runtime.recommended_std_options;
@@ -57,25 +58,25 @@ const GameScene = struct {
     pub fn onUpdate(self: *GameScene, delta_time: f32) void {
         const speed = movement_speed * delta_time;
 
-        if (runtime.Input.isKeyPressed(.Escape)) {
+        if (Input.isKeyPressed(.Escape)) {
             std.log.info("Escape key pressed, exiting...", .{});
-        } else if (runtime.Input.isKeyHeld(.Space)) {
+        } else if (Input.isKeyHeld(.Space)) {
             std.log.info("Space key pressed!", .{});
-        } else if (runtime.Input.isKeyHeld(.A)) {
+        } else if (Input.isKeyHeld(.A)) {
             self.transparency += speed;
             if (self.transparency > 1.0) {
                 self.transparency = 1.0;
             }
             self.position.x -= speed;
-        } else if (runtime.Input.isKeyHeld(.D)) {
+        } else if (Input.isKeyHeld(.D)) {
             self.transparency -= speed;
             if (self.transparency < 0.0) {
                 self.transparency = 0.0;
             }
             self.position.x += speed;
-        } else if (runtime.Input.isKeyHeld(.W)) {
+        } else if (Input.isKeyHeld(.W)) {
             self.position.y += speed;
-        } else if (runtime.Input.isKeyHeld(.S)) {
+        } else if (Input.isKeyHeld(.S)) {
             self.position.y -= speed;
         }
 
@@ -93,6 +94,9 @@ const GameScene = struct {
         switch (e) {
             .KeyPressed => |key| {
                 std.log.info("GameScene received key: {s}", .{@tagName(key)});
+                if (key == .Escape) {
+                    runtime.Application.Shutdown();
+                }
             },
             .WindowClose => {
                 std.log.info("GameScene shutting down...", .{});
