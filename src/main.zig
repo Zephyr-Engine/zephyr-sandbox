@@ -74,7 +74,7 @@ const GameScene = struct {
 
         self.vao.bind();
         gl.glDrawElements(gl.GL_TRIANGLES, @intCast(self.vao.indexCount()), gl.GL_UNSIGNED_INT, @ptrFromInt(0));
-        self.vao.unbind();
+        runtime.VertexArray.unbind();
     }
 
     pub fn onEvent(self: *GameScene, e: runtime.ZEvent) void {
