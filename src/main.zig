@@ -1,7 +1,6 @@
 const std = @import("std");
 const runtime = @import("zephyr_runtime");
 const Input = runtime.Input;
-const gl = runtime.gl;
 
 pub const std_options = runtime.recommended_std_options;
 
@@ -25,8 +24,6 @@ const GameScene = struct {
     }
 
     pub fn onStartup(self: *GameScene, allocator: std.mem.Allocator) !void {
-        _ = allocator;
-
         std.log.info("GameScene starting up...", .{});
 
         const vertices = [_]f32{
@@ -45,17 +42,13 @@ const GameScene = struct {
 
         const vs_src = @embedFile("shaders/vertex.glsl");
         const fs_src = @embedFile("shaders/fragment.glsl");
-        self.shader = runtime.Shader.init(vs_src, fs_src);
+        self.shader = try runtime.Shader.init(allocator, vs_src, fs_src);
 
-        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 3 * @sizeOf(f32), @ptrFromInt(0));
-        gl.glEnableVertexAttribArray(0);
-
-        // Enable blending for transparency
-        gl.glEnable(gl.GL_BLEND);
-        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA);
+        self.vao.setLayout(self.shader.buffer_layout);
     }
 
     pub fn onUpdate(self: *GameScene, delta_time: f32) void {
+        runtime.RenderCommand.Clear(.{ .x = 0.4, .y = 0.4, .z = 0.4 });
         const speed = movement_speed * delta_time;
 
         if (Input.isKeyPressed(.Escape)) {
@@ -84,8 +77,7 @@ const GameScene = struct {
         self.shader.setUniform("r_color", self.transparency);
         self.shader.setUniform("r_position", runtime.Vec3.new(self.position.x, self.position.y, 0));
 
-        self.vao.bind();
-        gl.glDrawElements(gl.GL_TRIANGLES, @intCast(self.vao.indexCount()), gl.GL_UNSIGNED_INT, @ptrFromInt(0));
+        runtime.RenderCommand.Draw(self.vao);
         runtime.VertexArray.unbind();
     }
 
@@ -107,6 +99,7 @@ const GameScene = struct {
 
     pub fn onCleanup(self: *GameScene, allocator: std.mem.Allocator) void {
         std.log.info("GameScene cleaning up...", .{});
+        self.shader.deinit(allocator);
         allocator.destroy(self);
     }
 };
