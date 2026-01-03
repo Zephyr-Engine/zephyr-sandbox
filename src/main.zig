@@ -78,7 +78,6 @@ const GameScene = struct {
         self.shader.setUniform("r_position", runtime.Vec3.new(self.position.x, self.position.y, 0));
 
         runtime.RenderCommand.Draw(self.vao);
-        runtime.VertexArray.unbind();
     }
 
     pub fn onEvent(self: *GameScene, e: runtime.ZEvent) void {
