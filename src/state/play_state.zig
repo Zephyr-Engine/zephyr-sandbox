@@ -1,5 +1,46 @@
+const zp = @import("zephyr_runtime");
+
 const Command = @import("../editor/command.zig").Command;
+const components = @import("../editor_components.zig");
 const log = @import("../utilities/log.zig");
+
+const EditorPlayback = @This();
+
+play_state: PlayState = .Stop,
+editor_camera: zp.EntityID,
+scene_camera: zp.EntityID,
+
+pub fn init(world: *zp.World) !EditorPlayback {
+    const active_scene_camera = zp.activeCamera(&world.world);
+
+    // default editor camera to the active scene camera
+    const editor_transform: zp.components.TransformComponent = if (active_scene_camera) |entity|
+        world.world.getComponent(entity, zp.components.TransformComponent).?.*
+    else
+        .{};
+    const editor_camera_component: zp.components.CameraComponent = if (active_scene_camera) |entity|
+        world.world.getComponent(entity, zp.components.CameraComponent).?.*
+    else
+        .{};
+
+    const editor_camera = try world.world.spawnWith(.{
+        editor_transform,
+        editor_camera_component,
+        components.FlyCameraController{},
+    });
+    const scene_camera = active_scene_camera orelse blk: {
+        log.warn("No active camera found, using editor camera", .{});
+        break :blk editor_camera;
+    };
+    errdefer world.world.despawn(editor_camera);
+
+    try zp.setActiveCamera(&world.world, editor_camera);
+
+    return .{
+        .editor_camera = editor_camera,
+        .scene_camera = scene_camera,
+    };
+}
 
 pub const PlayState = enum {
     Play,
@@ -22,7 +63,6 @@ pub const PlayState = enum {
             return null;
         }
 
-        log.info("Play state transition: {} -> {}", .{ current, next });
         return .{ .from = current, .to = next };
     }
 };

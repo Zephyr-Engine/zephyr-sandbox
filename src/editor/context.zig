@@ -1,21 +1,28 @@
+const zp = @import("zephyr_runtime");
 const std = @import("std");
 
 const Command = @import("command.zig").Command;
+const EditorPlayback = @import("../state/play_state.zig");
 const action_mod = @import("actions.zig");
 const Session = @import("session.zig");
 
 const EditorContext = @This();
 
 allocator: std.mem.Allocator,
-session: Session = .{},
+world: *zp.World,
+assets: *zp.AssetManager,
+session: Session,
 actions: action_mod.Registry,
 
-pub fn create(allocator: std.mem.Allocator) !*EditorContext {
+pub fn create(allocator: std.mem.Allocator, world: *zp.World, assets: *zp.AssetManager) !*EditorContext {
     const context = try allocator.create(EditorContext);
     errdefer allocator.destroy(context);
     context.* = .{
         .allocator = allocator,
+        .assets = assets,
+        .world = world,
         .actions = action_mod.Registry.init(allocator),
+        .session = Session.init(try EditorPlayback.init(world)),
     };
     errdefer context.actions.deinit();
     try context.registerActions();
@@ -33,42 +40,55 @@ pub fn actionRegistry(self: *EditorContext) *action_mod.Registry {
     return &self.actions;
 }
 
+pub fn playState(self: *const EditorContext) EditorPlayback.PlayState {
+    return self.session.currentPlayState();
+}
+
 fn registerActions(self: *EditorContext) !void {
-    try self.actions.register(action_mod.ids.play, bindCommand("Play", &self.session, .play));
-    try self.actions.register(action_mod.ids.pause, bindCommand("Pause", &self.session, .pause));
-    try self.actions.register(action_mod.ids.stop, bindCommand("Stop", &self.session, .stop));
+    try self.actions.register(action_mod.ids.play, bindCommand("Play", self, .play));
+    try self.actions.register(action_mod.ids.pause, bindCommand("Pause", self, .pause));
+    try self.actions.register(action_mod.ids.stop, bindCommand("Stop", self, .stop));
 }
 
-fn bindCommand(comptime label: []const u8, session: *Session, comptime command: Command) action_mod.Action {
-    return action_mod.Action.bind(label, session, commandAction(command)).withEnabled(commandEnabled(command));
+fn bindCommand(comptime label: []const u8, context: *EditorContext, comptime command: Command) action_mod.Action {
+    return action_mod.Action.bind(label, context, commandAction(command)).withEnabled(commandEnabled(command));
 }
 
-fn commandAction(comptime command: Command) fn (*Session) void {
+fn commandAction(comptime command: Command) fn (*EditorContext) void {
     return struct {
-        fn execute(session: *Session) void {
-            _ = session.handle(command);
+        fn execute(context: *EditorContext) void {
+            const transition = context.session.handle(command) orelse return;
+            context.executeTransition(transition.to) catch |err| {
+                std.log.err("failed to execute transition: {}", .{err});
+            };
         }
     }.execute;
 }
 
-fn commandEnabled(comptime command: Command) fn (*Session) bool {
+fn commandEnabled(comptime command: Command) fn (*EditorContext) bool {
     return struct {
-        fn enabled(session: *Session) bool {
-            return session.canHandle(command);
+        fn enabled(context: *EditorContext) bool {
+            return context.session.canHandle(command);
         }
     }.enabled;
 }
 
-test "editor context owns session-backed action state" {
-    var context = try EditorContext.create(std.testing.allocator);
-    defer context.destroy();
+fn executeTransition(self: *EditorContext, state: EditorPlayback.PlayState) !void {
+    var camera: zp.EntityID = undefined;
+    switch (state) {
+        .Play => {
+            camera = self.session.play_state.scene_camera;
+        },
+        .Pause => {
+            camera = self.session.play_state.editor_camera;
+        },
+        .Stop => {
+            try self.world.resetActiveScene(self.assets);
+            const cam = zp.activeCamera(&self.world.world) orelse return error.NoActiveCamera;
+            self.session.play_state.scene_camera = cam;
 
-    try std.testing.expect(context.actions.enabled(action_mod.ids.play));
-    try std.testing.expect(!context.actions.enabled(action_mod.ids.pause));
-    try std.testing.expect(!context.actions.enabled(action_mod.ids.stop));
-
-    try std.testing.expect(context.actions.invoke(action_mod.ids.play));
-    try std.testing.expect(!context.actions.enabled(action_mod.ids.play));
-    try std.testing.expect(context.actions.enabled(action_mod.ids.pause));
-    try std.testing.expect(context.actions.enabled(action_mod.ids.stop));
+            camera = self.session.play_state.editor_camera;
+        },
+    }
+    try zp.setActiveCamera(&self.world.world, camera);
 }

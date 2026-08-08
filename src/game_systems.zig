@@ -7,7 +7,7 @@ const KeyboardMovementComponent = game_components.KeyboardMovementComponent;
 const TransformComponent = zp.components.TransformComponent;
 const Vec3 = zp.Vec3;
 
-pub fn keyboardMovementSystem(world: *zp.World, commands: *zp.CommandBuffer) !void {
+pub fn keyboardMovementSystem(world: *zp.EcsWorld, commands: *zp.CommandBuffer) !void {
     std.debug.assert(commands.world == world);
     const input = world.getResource(zp.Input);
     const direction = keyboardDirection(input);

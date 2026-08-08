@@ -20,9 +20,14 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
     defer app.deinit();
     app.setDebugStatsEnabled(true);
 
-    const editor_context = try EditorContext.create(allocator);
-    defer editor_context.destroy();
     try app.start();
+
+    const editor_context = try EditorContext.create(
+        allocator,
+        &app.runtime.world,
+        &app.runtime.assets,
+    );
+    defer editor_context.destroy();
 
     var ui_renderer = try ui.OpenGlRenderer.init(allocator, zp.Window.getProcAddress);
     defer ui_renderer.deinit();
@@ -82,7 +87,11 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
             ui_state.inputCapture().wants_mouse or editor.isInteracting(),
         );
 
-        try app.update();
+        switch (editor_context.playState()) {
+            .Play => try app.update(),
+            .Pause => try app.updateWithSchedule(Game.editor_schedule_override),
+            .Stop => try app.updateWithSchedule(Game.editor_schedule_override),
+        }
         if (viewport_target.renderTarget()) |target| {
             try app.renderScene(target);
         }
