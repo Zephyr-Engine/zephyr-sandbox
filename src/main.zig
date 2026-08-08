@@ -1,17 +1,23 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const EditorUi = @import("ui/editor_ui.zig").EditorUi;
-const scene_input = @import("ui/scene_input.zig");
+const editor_application = @import("editor/application.zig");
+const log = @import("utilities/log.zig");
 const zp = @import("zephyr_runtime");
 const cli = @import("cli/root.zig");
-const Game = @import("game.zig");
-const ui = @import("zGUI");
+
+inline fn allocator(gpa: std.mem.Allocator) std.mem.Allocator {
+    if (builtin.mode == .Debug) {
+        return gpa;
+    }
+
+    return std.heap.smp_allocator;
+}
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     const options = cli.parse(args) catch |err| {
-        std.log.err("Invalid editor arguments: {}", .{err});
+        log.err("Invalid editor arguments: {}", .{err});
         return;
     };
 
@@ -30,87 +36,23 @@ pub fn main(init: std.process.Init) !void {
     defer project.stopWatchingAssets(watch_handle);
 
     watch_handle.waitForInitialCook() catch |err| {
-        std.log.err("Failed to cook initial assets: {}", .{err});
+        log.err("Failed to cook initial assets: {}", .{err});
         return;
     };
 
-    const App = zp.Application(Game.definition);
-    const app = App.init(init.gpa, init.io, .{
-        .width = null,
-        .height = null,
-        .title = "Zephyr Editor",
-    }, &project) catch |err| {
-        std.log.err("Application init failed: {}", .{err});
+    editor_application.run(allocator(init.gpa), init.io, &project) catch |err| {
+        log.err("Editor failed to start: {}", .{err});
         return;
     };
-    defer app.deinit();
-    app.setDebugStatsEnabled(true);
+}
 
-    try app.start();
-
-    var ui_renderer = try ui.OpenGlRenderer.init(zp.Window.getProcAddress);
-    defer ui_renderer.deinit();
-    std.log.info("OpenGL: {s}", .{ui.OpenGlRenderer.versionString()});
-
-    const font_bytes = @embedFile("resources/fonts/Inter-Regular.ttf");
-    var font_atlas = try ui.FontAtlas.init(
-        init.gpa,
-        font_bytes,
-        1024,
-        1024,
-    );
-    defer font_atlas.deinit();
-    try ui_renderer.syncFontAtlas(&font_atlas);
-
-    var ui_state = try ui.Ui.init(init.gpa);
-    defer ui_state.deinit();
-    ui_state.setFontAtlas(&font_atlas);
-
-    var editor = try EditorUi.init(init.gpa, &ui_state);
-    defer editor.deinit();
-
-    var viewport = try app.runtime.renderer.device.createFramebuffer(1, 1);
-    defer app.runtime.renderer.device.destroyFramebuffer(&viewport);
-
-    var ui_backend = ui.zephyr_runtime.Backend.init(init.gpa);
-    defer ui_backend.deinit();
-
-    var scene_capture: scene_input.SceneInputCapture = .{};
-
-    while (app.window.shouldCloseWindow()) {
-        const runtime_events = app.beginFrame();
-        const ui_frame = try ui_backend.beginFrame(.{
-            .window_size = ui.zephyr_runtime.toUiSize(app.window.getWindowSize()),
-            .framebuffer_size = ui.zephyr_runtime.toPixelSize(app.window.getFramebufferSize()),
-            .dt = app.deltaTime(),
-        }, runtime_events);
-
-        try ui_state.beginFrame(ui_frame.toBeginFrame());
-
-        const dock_result = try editor.dockSpace(&ui_state, ui_frame.window_size);
-        ui.zephyr_runtime.setCursor(app.window, ui_state.requestedCursor());
-        editor.setViewportTexture(&ui_state, app.runtime.renderer.device.framebufferTextureId(&viewport));
-        editor.setDebugStats(&ui_state, app.debugStats());
-
-        ui_state.setTextRasterScale(ui_frame.text_raster_scale);
-        try ui_state.endFrame();
-
-        const viewport_rect = editor.viewportRect();
-        const render_size = ui.zephyr_runtime.renderSizeForRect(viewport_rect, ui_frame.text_raster_scale);
-        try app.runtime.renderer.device.resizeFramebuffer(&viewport, .{
-            .width = render_size.width,
-            .height = render_size.height,
-        });
-
-        const ui_owns_mouse = dock_result.cursor != .arrow or editor.dock.drag != null;
-        scene_input.processSceneEvents(app.input(), runtime_events, viewport_rect, ui_state.input.mouse_pos, &scene_capture, ui_owns_mouse);
-        try app.update();
-        try app.renderScene(&viewport);
-
-        try ui_renderer.syncFontAtlas(&font_atlas);
-        try ui_renderer.beginFrameLogical(ui_frame.framebuffer_size.width, ui_frame.framebuffer_size.height, ui_frame.window_size.x, ui_frame.window_size.y);
-        try ui_renderer.render(ui_state.drawData());
-        try ui_renderer.endFrame();
-        app.present();
-    }
+test {
+    _ = @import("cli/root.zig");
+    _ = @import("editor_camera.zig");
+    _ = @import("editor/application.zig");
+    _ = @import("game_systems.zig");
+    _ = @import("state/play_state.zig");
+    _ = @import("ui/scene_input.zig");
+    _ = @import("ui/viewport.zig");
+    _ = @import("viewport_target.zig");
 }

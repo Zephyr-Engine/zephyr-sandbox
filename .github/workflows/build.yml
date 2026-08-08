@@ -13,12 +13,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      # build.zig.zon deliberately uses ../zephyr-runtime during development.
+      # build.zig.zon deliberately uses sibling checkouts during development.
       # Recreate that sibling layout in CI with the current default branch.
       - name: Checkout zephyr-runtime
         run: git clone --depth 1 https://github.com/Zephyr-Engine/zephyr-runtime.git ../zephyr-runtime
 
       - name: Build project
-        run: zig build
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Run tests
+        run: zig build test --summary all

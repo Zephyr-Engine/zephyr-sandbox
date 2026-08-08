@@ -1,23 +1,50 @@
 const std = @import("std");
 const ui = @import("zGUI");
-const zp = @import("zephyr_runtime");
 
-pub const Nodes = struct {
-    root: ui.NodeId,
-    image: ui.NodeId,
-    stats_card: ui.NodeId,
-    stats_label: ui.NodeId,
+const actions = @import("../editor/actions.zig");
+const ActionButton = @import("action_button.zig");
+const panel = @import("panel.zig");
+
+pub const panel_id = panel.id("editor.viewport");
+pub const descriptor: panel.Descriptor = .{
+    .id = panel_id,
+    .title = "Viewport",
+    .min_size = .{ .x = 240, .y = 240 },
 };
 
-pub fn build(state: *ui.Ui, parent: ui.NodeId) !Nodes {
-    const root = try ui.widgets.surface(state, parent, .{
+pub const Icons = struct {
+    play: ui.TextureHandle,
+    pause: ui.TextureHandle,
+    stop: ui.TextureHandle,
+};
+
+const Viewport = @This();
+
+texture: ui.TextureHandle,
+icons: Icons,
+root_node: ui.NodeId = ui.invalid_node,
+image: ui.NodeId = ui.invalid_node,
+stats_card: ui.NodeId = ui.invalid_node,
+stats_label: ui.NodeId = ui.invalid_node,
+action_buttons: [3]ActionButton = undefined,
+stats_text: [128]u8 = undefined,
+stats_visible: bool = false,
+
+pub fn init(texture: ui.TextureHandle, icons: Icons) Viewport {
+    return .{ .texture = texture, .icons = icons };
+}
+
+pub fn mount(self: *Viewport, state: *ui.Ui, parent: ui.NodeId, services: panel.Services) !void {
+    const root_node = try ui.widgets.surface(state, parent, .{
         .width = .fill,
         .height = .fill,
         .direction = .absolute,
         .background = .viewport,
     });
-    const image = try ui.widgets.image(state, root, .{
-        .texture_id = 0,
+    errdefer state.destroySubtree(root_node);
+
+    const image = try ui.widgets.image(state, root_node, .{
+        .texture = self.texture,
         .style = state.theme.style(.{
             .width = .fill,
             .height = .fill,
@@ -28,10 +55,55 @@ pub fn build(state: *ui.Ui, parent: ui.NodeId) !Nodes {
         }),
         .uv0 = .{ .x = 0, .y = 1 },
         .uv1 = .{ .x = 1, .y = 0 },
-        .interactive = true,
+        .interactive = false,
     });
 
-    const stats_row = try ui.widgets.row(state, root, .{
+    const toolbar_row = try ui.widgets.row(state, root_node, .{
+        .width = .fill,
+        .height = .{ .px = 52 },
+        .padding = .{ .top = 9 },
+        .background = .transparent,
+    });
+    _ = try ui.widgets.spacer(state, toolbar_row);
+    const toolbar = try ui.widgets.row(state, toolbar_row, .{
+        .width = .{ .px = 98 },
+        .height = .{ .px = 36 },
+        .gap = 2,
+        .padding = .{ .left = 5, .right = 5, .top = 4, .bottom = 4 },
+        .background = .shell,
+        .border = .stroke_soft,
+        .border_width = 1,
+        .radius = .pill,
+    });
+    var toolbar_style = state.nodeStyle(toolbar).?;
+    toolbar_style.background = ui.Color.rgba(17, 18, 22, 232);
+    toolbar_style.border_color = ui.Color.rgba(255, 255, 255, 24);
+    try state.setStyle(toolbar, toolbar_style);
+    _ = try ui.widgets.spacer(state, toolbar_row);
+
+    const play_button = try controlButton(
+        state,
+        toolbar,
+        services.actions,
+        actions.ids.play,
+        self.icons.play,
+    );
+    const pause_button = try controlButton(
+        state,
+        toolbar,
+        services.actions,
+        actions.ids.pause,
+        self.icons.pause,
+    );
+    const stop_button = try controlButton(
+        state,
+        toolbar,
+        services.actions,
+        actions.ids.stop,
+        self.icons.stop,
+    );
+
+    const stats_row = try ui.widgets.row(state, root_node, .{
         .width = .fill,
         .height = .{ .px = 82 },
         .padding = .{ .top = 10, .right = 10 },
@@ -53,57 +125,86 @@ pub fn build(state: *ui.Ui, parent: ui.NodeId) !Nodes {
         .color = .text,
         .size = state.theme.font.small,
     });
-    const card_node = state.tree.get(stats_card).?;
-    card_node.style.background = ui.Color.rgba(30, 30, 36, 220);
-    card_node.flags.visible = false;
+    var card_style = state.nodeStyle(stats_card).?;
+    card_style.background = ui.Color.rgba(30, 30, 36, 220);
+    try state.setStyle(stats_card, card_style);
+    try state.setVisible(stats_card, false);
 
-    return .{
-        .root = root,
-        .image = image,
-        .stats_card = stats_card,
-        .stats_label = stats_label,
-    };
+    self.root_node = root_node;
+    self.image = image;
+    self.stats_card = stats_card;
+    self.stats_label = stats_label;
+    self.action_buttons = .{ play_button, pause_button, stop_button };
+    self.stats_visible = false;
 }
 
-pub fn setTexture(state: *ui.Ui, image: ui.NodeId, texture_id: u32) void {
-    ui.widgets.setImage(state, image, .{
-        .texture_id = texture_id,
-        .uv0 = .{ .x = 0, .y = 1 },
-        .uv1 = .{ .x = 1, .y = 0 },
-        .tint = ui.Color.rgba(255, 255, 255, 255),
-    });
-}
+pub fn update(self: *Viewport, state: *ui.Ui, frame: panel.Frame) !void {
+    for (&self.action_buttons) |*button| try button.sync(state);
 
-pub fn setStats(state: *ui.Ui, nodes: Nodes, buffer: []u8, stats: ?zp.DebugStats) void {
-    const snapshot = stats orelse {
-        setVisible(state, nodes.stats_card, false);
-        setVisible(state, nodes.stats_label, false);
+    const snapshot = frame.debug_stats orelse {
+        if (self.stats_visible) {
+            try state.setVisible(self.stats_card, false);
+            self.stats_visible = false;
+        }
         return;
     };
 
     const text = if (snapshot.gpu_time_ms) |gpu_time_ms|
-        std.fmt.bufPrint(buffer, "{d:.0} FPS  {d:.2} ms\nCPU  {d:.2} ms\nGPU  {d:.2} ms", .{
+        std.fmt.bufPrint(&self.stats_text, "{d:.0} FPS  {d:.2} ms\nCPU  {d:.2} ms\nGPU  {d:.2} ms", .{
             snapshot.fps,
             snapshot.frame_time_ms,
             snapshot.cpu_time_ms,
             gpu_time_ms,
-        }) catch return
+        }) catch return error.StatsBufferTooSmall
     else
-        std.fmt.bufPrint(buffer, "{d:.0} FPS  {d:.2} ms\nCPU  {d:.2} ms\nGPU  --", .{
+        std.fmt.bufPrint(&self.stats_text, "{d:.0} FPS  {d:.2} ms\nCPU  {d:.2} ms\nGPU  --", .{
             snapshot.fps,
             snapshot.frame_time_ms,
             snapshot.cpu_time_ms,
-        }) catch return;
+        }) catch return error.StatsBufferTooSmall;
 
-    setVisible(state, nodes.stats_card, true);
-    setVisible(state, nodes.stats_label, true);
-    state.tree.setText(nodes.stats_label, text) catch return;
+    if (!self.stats_visible) {
+        try state.setVisible(self.stats_card, true);
+        self.stats_visible = true;
+    }
+    try state.setText(self.stats_label, text);
 }
 
-fn setVisible(state: *ui.Ui, id: ui.NodeId, visible: bool) void {
-    const node = state.tree.get(id) orelse return;
-    if (node.flags.visible == visible) return;
-    node.flags.visible = visible;
-    node.dirty.layout = true;
-    node.dirty.paint = true;
+pub fn unmount(self: *Viewport, state: *ui.Ui) void {
+    state.destroySubtree(self.root_node);
+    self.root_node = ui.invalid_node;
+    self.image = ui.invalid_node;
+    self.stats_card = ui.invalid_node;
+    self.stats_label = ui.invalid_node;
+    self.stats_visible = false;
+}
+
+pub fn root(self: *const Viewport) ui.NodeId {
+    return self.root_node;
+}
+
+fn controlButton(
+    state: *ui.Ui,
+    parent: ui.NodeId,
+    registry: *actions.Registry,
+    comptime action_id: actions.ActionId,
+    icon: ui.TextureHandle,
+) !ActionButton {
+    var button = try ActionButton.create(state, parent, registry, action_id, .{
+        .texture = icon,
+        .style = state.theme.style(.{
+            .width = .{ .px = 28 },
+            .height = .{ .px = 28 },
+            .padding = .{ .left = 4, .right = 4, .top = 4, .bottom = 4 },
+            .background = .transparent,
+            .border = .transparent,
+            .radius = .control,
+        }),
+    });
+    var style = state.nodeStyle(button.node).?;
+    style.hover_background = ui.Color.rgba(255, 255, 255, 18);
+    style.pressed_background = ui.Color.rgba(255, 255, 255, 30);
+    try state.setStyle(button.node, style);
+    try button.sync(state);
+    return button;
 }

@@ -1,22 +1,39 @@
 const ui = @import("zGUI");
 
-const panel_vertical_inset: f32 = 10;
+const panel = @import("panel.zig");
 
-pub fn build(state: *ui.Ui, parent: ui.NodeId) !ui.NodeId {
-    const panel = try ui.widgets.column(state, parent, .{
+pub const panel_id = panel.id("editor.inspector");
+pub const descriptor: panel.Descriptor = .{
+    .id = panel_id,
+    .title = "Inspector",
+    .min_size = .{ .x = 190, .y = 240 },
+};
+
+const Inspector = @This();
+
+root_node: ui.NodeId = ui.invalid_node,
+
+pub fn init() Inspector {
+    return .{};
+}
+
+pub fn mount(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, services: panel.Services) !void {
+    _ = services;
+    const root_node = try ui.widgets.column(state, parent, .{
         .width = .fill,
         .height = .fill,
         .gap = 10,
-        .padding = ui.Edges{ .left = 12, .right = 12, .top = 12, .bottom = 12 },
-        .margin = ui.Edges{ .top = panel_vertical_inset, .bottom = panel_vertical_inset },
+        .padding = .{ .left = 12, .right = 12, .top = 12, .bottom = 12 },
+        .margin = .{ .top = 10, .bottom = 10 },
         .background = .panel,
-        .radius_corners = ui.CornerRadii{
+        .radius_corners = .{
             .top_left = state.theme.radius(.card),
             .bottom_left = state.theme.radius(.card),
         },
     });
+    errdefer state.destroySubtree(root_node);
 
-    const header = try ui.widgets.row(state, panel, .{
+    const header = try ui.widgets.row(state, root_node, .{
         .width = .fill,
         .height = .{ .px = 30 },
         .gap = 8,
@@ -24,9 +41,24 @@ pub fn build(state: *ui.Ui, parent: ui.NodeId) !ui.NodeId {
     _ = try ui.widgets.text(state, header, "Inspector", .{
         .width = .fill,
         .height = .fill,
-        .padding = ui.Edges{ .top = 6 },
+        .padding = .{ .top = 6 },
         .size = state.theme.font.title,
     });
 
-    return panel;
+    self.root_node = root_node;
+}
+
+pub fn update(self: *Inspector, state: *ui.Ui, frame: panel.Frame) !void {
+    _ = self;
+    _ = state;
+    _ = frame;
+}
+
+pub fn unmount(self: *Inspector, state: *ui.Ui) void {
+    state.destroySubtree(self.root_node);
+    self.root_node = ui.invalid_node;
+}
+
+pub fn root(self: *const Inspector) ui.NodeId {
+    return self.root_node;
 }

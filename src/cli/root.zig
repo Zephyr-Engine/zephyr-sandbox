@@ -1,5 +1,7 @@
-const std = @import("std");
 const zp = @import("zephyr_runtime");
+const std = @import("std");
+
+const log = @import("../utilities/log.zig");
 
 const default_project_name = "Zephyr Game Example";
 
@@ -12,27 +14,25 @@ pub const Options = struct {
 pub fn parse(args: []const []const u8) !Options {
     var options: Options = .{};
 
-    var i: usize = 1;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "create")) {
-            i += 1;
-            if (i >= args.len) {
-                return error.MissingProjectPath;
-            }
+    if (args.len == 1) {
+        return error.MissingProjectPath;
+    }
 
-            options.root_path = args[i];
-            options.create_project = true;
-        } else if (std.mem.eql(u8, arg, "open")) {
-            i += 1;
-            if (i >= args.len) {
-                return error.MissingProjectPath;
-            }
-
-            options.root_path = args[i];
-        } else {
-            return error.UnknownArgument;
+    if (args.len == 2) {
+        if (std.mem.eql(u8, args[1], "create") or std.mem.eql(u8, args[1], "open")) {
+            return error.MissingProjectPath;
         }
+        return error.UnknownArgument;
+    }
+    if (args.len != 3) {
+        return error.UnknownArgument;
+    }
+
+    options.root_path = args[2];
+    if (std.mem.eql(u8, args[1], "create")) {
+        options.create_project = true;
+    } else if (!std.mem.eql(u8, args[1], "open")) {
+        return error.UnknownArgument;
     }
 
     return options;
@@ -70,28 +70,35 @@ pub fn createProject(
     try root_dir.createDirPath(io, manifest.cooked_assets_dir);
     try manifest.save(allocator, io, root_dir);
 
-    std.log.info("Created project at {s}", .{root_path});
+    log.info("Created project at {s}", .{root_path});
 }
 
 const testing = std.testing;
 
-test "parse defaults to opening current project" {
-    const options = try parse(&.{"zephyr-editor"});
+test "parse rejects a missing project path" {
+    try testing.expectError(error.MissingProjectPath, parse(&.{"zephyr-editor"}));
+}
 
-    try testing.expectEqualStrings(".", options.root_path);
+test "parse create command selects create mode" {
+    const options = try parse(&.{ "zephyr-editor", "create", "/tmp/project" });
+
+    try testing.expectEqualStrings("/tmp/project", options.root_path);
+    try testing.expect(options.create_project);
+}
+
+test "parse open command selects open mode" {
+    const options = try parse(&.{ "zephyr-editor", "open", "/tmp/project" });
+
+    try testing.expectEqualStrings("/tmp/project", options.root_path);
     try testing.expect(!options.create_project);
 }
 
-test "parse project flag selects create mode" {
-    const options = try parse(&.{ "zephyr-editor", "--project", "/tmp/project" });
-
-    try testing.expectEqualStrings("/tmp/project", options.root_path);
-    try testing.expect(options.create_project);
+test "parse rejects commands without a project path" {
+    try testing.expectError(error.MissingProjectPath, parse(&.{ "zephyr-editor", "create" }));
+    try testing.expectError(error.MissingProjectPath, parse(&.{ "zephyr-editor", "open" }));
 }
 
-test "parse project equals flag selects create mode" {
-    const options = try parse(&.{ "zephyr-editor", "--project=/tmp/project" });
-
-    try testing.expectEqualStrings("/tmp/project", options.root_path);
-    try testing.expect(options.create_project);
+test "parse rejects unknown arguments" {
+    try testing.expectError(error.UnknownArgument, parse(&.{ "zephyr-editor", "wat" }));
+    try testing.expectError(error.UnknownArgument, parse(&.{ "zephyr-editor", "open", "/tmp/project", "extra" }));
 }
