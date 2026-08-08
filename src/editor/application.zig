@@ -2,7 +2,6 @@ const zp = @import("zephyr_runtime");
 const ui = @import("zGUI");
 const std = @import("std");
 
-const SceneInputCapture = @import("../ui/scene_input.zig");
 const Backend = @import("../ui/zgui_runtime_backend.zig");
 const ViewportTarget = @import("../viewport_target.zig");
 const Icons = @import("../icons/editor_icons.zig");
@@ -59,7 +58,6 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
     var ui_backend = Backend.init(allocator, &ui_renderer);
     defer ui_backend.deinit();
 
-    var scene_capture: SceneInputCapture = .{};
     while (app.window.shouldCloseWindow()) {
         const runtime_events = app.beginFrame();
         const frame = try ui_backend.beginFrame(.{
@@ -79,7 +77,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
 
         const viewport_rect = editor.viewportRect();
         _ = try viewport_target.ensureSize(viewport_rect, frame.text_raster_scale);
-        scene_capture.processSceneEvents(
+        editor_context.sceneInputCapture().processSceneEvents(
             app.input(),
             runtime_events,
             viewport_rect,

@@ -48,3 +48,49 @@ fn keyboardDirection(input: *const zp.Input) Vec3 {
 
     return direction;
 }
+
+const testing = std.testing;
+
+fn inputWithKeysDown(keys: []const zp.Key) zp.Input {
+    var input: zp.Input = .{};
+    for (keys) |key| {
+        input.applyEvent(.{ .KeyPressed = key });
+    }
+    return input;
+}
+
+test "keyboardDirection is zero with no keys held" {
+    const input: zp.Input = .{};
+    const direction = keyboardDirection(&input);
+
+    try testing.expectEqual(@as(f32, 0), direction.x);
+    try testing.expectEqual(@as(f32, 0), direction.z);
+}
+
+test "keyboardDirection maps WASD to forward/back/left/right" {
+    try testing.expectEqual(@as(f32, -1), keyboardDirection(&inputWithKeysDown(&.{.W})).z);
+    try testing.expectEqual(@as(f32, 1), keyboardDirection(&inputWithKeysDown(&.{.S})).z);
+    try testing.expectEqual(@as(f32, -1), keyboardDirection(&inputWithKeysDown(&.{.A})).x);
+    try testing.expectEqual(@as(f32, 1), keyboardDirection(&inputWithKeysDown(&.{.D})).x);
+}
+
+test "keyboardDirection treats arrow keys as aliases for WASD" {
+    try testing.expectEqual(@as(f32, -1), keyboardDirection(&inputWithKeysDown(&.{.Up})).z);
+    try testing.expectEqual(@as(f32, 1), keyboardDirection(&inputWithKeysDown(&.{.Down})).z);
+    try testing.expectEqual(@as(f32, -1), keyboardDirection(&inputWithKeysDown(&.{.Left})).x);
+    try testing.expectEqual(@as(f32, 1), keyboardDirection(&inputWithKeysDown(&.{.Right})).x);
+}
+
+test "keyboardDirection combines simultaneous keys" {
+    const direction = keyboardDirection(&inputWithKeysDown(&.{ .W, .D }));
+
+    try testing.expectEqual(@as(f32, -1), direction.z);
+    try testing.expectEqual(@as(f32, 1), direction.x);
+}
+
+test "keyboardDirection cancels opposing keys" {
+    const direction = keyboardDirection(&inputWithKeysDown(&.{ .W, .S, .A, .D }));
+
+    try testing.expectEqual(@as(f32, 0), direction.z);
+    try testing.expectEqual(@as(f32, 0), direction.x);
+}

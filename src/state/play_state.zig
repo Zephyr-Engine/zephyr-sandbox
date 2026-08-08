@@ -76,3 +76,24 @@ test "play state accepts only meaningful transitions" {
     try testing.expect(PlayState.Stop.apply(.pause) == null);
     try testing.expect(PlayState.Stop.apply(.stop) == null);
 }
+
+test "pause is only meaningful while playing" {
+    try testing.expect(PlayState.Pause.apply(.pause) == null);
+    try testing.expect(PlayState.Stop.apply(.pause) == null);
+}
+
+test "play and stop are idempotent from their own state" {
+    try testing.expect(PlayState.Play.apply(.play) == null);
+    try testing.expect(PlayState.Stop.apply(.stop) == null);
+}
+
+test "play restarts playback from a paused state" {
+    const transition = PlayState.Pause.apply(.play).?;
+    try testing.expectEqual(PlayState.Pause, transition.from);
+    try testing.expectEqual(PlayState.Play, transition.to);
+}
+
+test "stop is always reachable from play or pause" {
+    try testing.expectEqual(PlayState.Stop, PlayState.Play.apply(.stop).?.to);
+    try testing.expectEqual(PlayState.Stop, PlayState.Pause.apply(.stop).?.to);
+}

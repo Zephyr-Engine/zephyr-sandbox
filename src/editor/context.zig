@@ -1,8 +1,9 @@
 const zp = @import("zephyr_runtime");
 const std = @import("std");
 
-const Command = @import("command.zig").Command;
+const SceneInputCapture = @import("../ui/scene_input.zig");
 const EditorPlayback = @import("../state/play_state.zig");
+const Command = @import("command.zig").Command;
 const action_mod = @import("actions.zig");
 const Session = @import("session.zig");
 
@@ -13,6 +14,7 @@ world: *zp.World,
 assets: *zp.AssetManager,
 session: Session,
 actions: action_mod.Registry,
+scene_input_capture: SceneInputCapture = .{},
 
 pub fn create(allocator: std.mem.Allocator, world: *zp.World, assets: *zp.AssetManager) !*EditorContext {
     const context = try allocator.create(EditorContext);
@@ -42,6 +44,10 @@ pub fn actionRegistry(self: *EditorContext) *action_mod.Registry {
 
 pub fn playState(self: *const EditorContext) EditorPlayback.PlayState {
     return self.session.currentPlayState();
+}
+
+pub fn sceneInputCapture(self: *EditorContext) *SceneInputCapture {
+    return &self.scene_input_capture;
 }
 
 fn registerActions(self: *EditorContext) !void {
@@ -91,4 +97,7 @@ fn executeTransition(self: *EditorContext, state: EditorPlayback.PlayState) !voi
         },
     }
     try zp.setActiveCamera(&self.world.world, camera);
+
+    self.world.getResource(zp.Input).clear();
+    self.scene_input_capture.reset();
 }
