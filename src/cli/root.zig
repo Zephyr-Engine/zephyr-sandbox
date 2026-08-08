@@ -75,11 +75,8 @@ pub fn createProject(
 
 const testing = std.testing;
 
-test "parse defaults to opening current project" {
-    const options = try parse(&.{"zephyr-editor"});
-
-    try testing.expectEqualStrings(".", options.root_path);
-    try testing.expect(!options.create_project);
+test "parse rejects a missing project path" {
+    try testing.expectError(error.MissingProjectPath, parse(&.{"zephyr-editor"}));
 }
 
 test "parse create command selects create mode" {
