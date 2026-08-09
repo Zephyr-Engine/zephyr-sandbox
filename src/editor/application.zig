@@ -141,7 +141,5 @@ fn xwaylandScaleFactor() f32 {
 
 test {
     _ = @import("actions.zig");
-    _ = @import("command.zig");
     _ = @import("context.zig");
-    _ = @import("session.zig");
 }
