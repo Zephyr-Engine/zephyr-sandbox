@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const zgui_mod = zgui_dep.module("zGUI");
+    const zgui_native_mod = zgui_dep.module("zGUI_native");
 
     const editor_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -22,6 +23,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "zephyr_runtime", .module = runtime_mod },
             .{ .name = "zGUI", .module = zgui_mod },
+            .{ .name = "zGUI_native", .module = zgui_native_mod },
         },
     });
 

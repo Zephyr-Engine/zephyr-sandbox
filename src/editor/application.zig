@@ -1,3 +1,4 @@
+const native_ui = @import("zGUI_native");
 const zp = @import("zephyr_runtime");
 const ui = @import("zGUI");
 const std = @import("std");
@@ -7,6 +8,7 @@ const ViewportTarget = @import("../viewport_target.zig");
 const Icons = @import("../icons/editor_icons.zig");
 const EditorUi = @import("../ui/editor_ui.zig");
 const EditorContext = @import("context.zig");
+const actions = @import("actions.zig");
 const Game = @import("../game.zig");
 
 pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project) !void {
@@ -23,10 +25,21 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
 
     const editor_context = try EditorContext.create(
         allocator,
+        io,
         &app.runtime.world,
         &app.runtime.assets,
     );
     defer editor_context.destroy();
+
+    var native_menu_context = NativeMenuContext{ .registry = editor_context.actionRegistry(), .window = app.window };
+    const window_handle = try app.window.nativeMenuWindowHandle();
+    var native_menu = try native_ui.NativeMenu.init(window_handle, "Zephyr Editor", &native_menu_context, nativeMenuAction);
+    defer native_menu.deinit();
+
+    const file = try native_menu.addMenu("File");
+    try native_menu.addItem(file, "New Project", actions.ids.new_project);
+    try native_menu.addItem(file, "Open Project", actions.ids.open_project);
+    try native_menu.addItem(file, "Save Project", actions.ids.save_project);
 
     var ui_renderer = try ui.OpenGlRenderer.init(allocator, zp.Window.getProcAddress);
     defer ui_renderer.deinit();
@@ -59,10 +72,18 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
     defer ui_backend.deinit();
 
     while (app.window.shouldCloseWindow()) {
+        native_menu.poll();
+        const window_size = app.window.getWindowSize();
+        const native_ui_scale = @max(
+            native_menu.scaleFactor(window_size.width),
+            xwaylandScaleFactor(),
+        );
+
         const runtime_events = app.beginFrame();
         const frame = try ui_backend.beginFrame(.{
-            .window_size = Backend.toUiSize(app.window.getWindowSize()),
+            .window_size = Backend.toUiSize(window_size, native_ui_scale),
             .framebuffer_size = Backend.toPixelSize(app.window.getFramebufferSize()),
+            .ui_scale = native_ui_scale,
             .dt = app.deltaTime(),
             .font_atlas = &font_atlas,
         }, runtime_events);
@@ -98,6 +119,24 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
         try ui_renderer.endFrame();
         app.present();
     }
+}
+
+const NativeMenuContext = struct {
+    registry: *actions.Registry,
+    window: *zp.Window,
+};
+
+fn nativeMenuAction(context: ?*anyopaque, action: native_ui.ActionId) callconv(.c) void {
+    const native_menu_context: *NativeMenuContext = @ptrCast(@alignCast(context.?));
+    if (action == native_ui.close_action) {
+        native_menu_context.window.requestClose();
+        return;
+    }
+    _ = native_menu_context.registry.invoke(action);
+}
+
+fn xwaylandScaleFactor() f32 {
+    return if (@import("builtin").os.tag == .linux and @import("std").c.getenv("WAYLAND_DISPLAY") != null) 2 else 1;
 }
 
 test {

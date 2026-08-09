@@ -12,6 +12,9 @@ pub fn actionId(comptime name: []const u8) ActionId {
 }
 
 pub const ids = struct {
+    pub const new_project = actionId("editor.project.new");
+    pub const open_project = actionId("editor.project.open");
+    pub const save_project = actionId("editor.project.save");
     pub const play = actionId("editor.play");
     pub const pause = actionId("editor.pause");
     pub const stop = actionId("editor.stop");
