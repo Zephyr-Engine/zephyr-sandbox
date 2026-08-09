@@ -30,6 +30,13 @@ jobs:
         with:
           version: 0.16.0
 
+      - name: Install Linux OpenGL headers
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgl-dev
+
       # build.zig.zon deliberately uses sibling checkouts during development.
       # Recreate that layout on each hosted runner.
       - name: Checkout zephyr-runtime
