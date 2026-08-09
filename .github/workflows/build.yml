@@ -34,7 +34,7 @@ jobs:
       # Recreate that layout on each hosted runner.
       - name: Checkout zephyr-runtime
         shell: bash
-        run: git clone --depth 1 --branch render-thread https://github.com/Zephyr-Engine/zephyr-runtime.git ../zephyr-runtime
+        run: git clone --depth 1 https://github.com/Zephyr-Engine/zephyr-runtime.git ../zephyr-runtime
 
       - name: Build project
         shell: bash
