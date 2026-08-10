@@ -2,12 +2,12 @@ const std = @import("std");
 const ui = @import("zGUI");
 
 const actions = @import("../editor/actions.zig");
-const console = @import("console.zig");
+const Workspace = @import("workspace.zig");
 const inspector = @import("inspector.zig");
+const viewport = @import("viewport.zig");
+const console = @import("console.zig");
 const panel = @import("panel.zig");
 const scene = @import("scene.zig");
-const viewport = @import("viewport.zig");
-const Workspace = @import("workspace.zig");
 
 const min_side_width: f32 = 190;
 const min_center_width: f32 = 240;
@@ -25,13 +25,18 @@ pub fn init(
     viewport_texture: ui.TextureHandle,
     icons: viewport.Icons,
 ) !EditorUi {
-    var workspace = try Workspace.init(allocator, state, .{ .actions = action_registry });
+    var workspace = try Workspace.init(
+        allocator,
+        state,
+        .{ .actions = action_registry },
+    );
     errdefer workspace.deinit(state);
 
     const scene_window = try addPanel(&workspace, state, scene.descriptor, scene.init());
     const viewport_window = try addPanel(&workspace, state, viewport.descriptor, viewport.init(viewport_texture, icons));
     const inspector_window = try addPanel(&workspace, state, inspector.descriptor, inspector.init());
     const console_window = try addPanel(&workspace, state, console.descriptor, console.init());
+
     try createDefaultLayout(&workspace.dock, .{
         .scene = scene_window,
         .viewport = viewport_window,

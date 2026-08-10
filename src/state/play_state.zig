@@ -1,6 +1,5 @@
 const zp = @import("zephyr_runtime");
 
-const Command = @import("../editor/command.zig").Command;
 const components = @import("../editor_components.zig");
 const log = @import("../utilities/log.zig");
 
@@ -52,14 +51,8 @@ pub const PlayState = enum {
         to: PlayState,
     };
 
-    pub fn apply(current: PlayState, command: Command) ?Transition {
-        const next: PlayState = switch (command) {
-            .play => .Play,
-            .pause => if (current == .Play) .Pause else current,
-            .stop => .Stop,
-        };
-
-        if (next == current) {
+    pub fn transitionTo(current: PlayState, next: PlayState) ?Transition {
+        if (next == current or (next == .Pause and current != .Play)) {
             return null;
         }
 
@@ -70,30 +63,30 @@ pub const PlayState = enum {
 const testing = @import("std").testing;
 
 test "play state accepts only meaningful transitions" {
-    try testing.expectEqual(PlayState.Play, PlayState.Stop.apply(.play).?.to);
-    try testing.expectEqual(PlayState.Pause, PlayState.Play.apply(.pause).?.to);
-    try testing.expectEqual(PlayState.Stop, PlayState.Pause.apply(.stop).?.to);
-    try testing.expect(PlayState.Stop.apply(.pause) == null);
-    try testing.expect(PlayState.Stop.apply(.stop) == null);
+    try testing.expectEqual(PlayState.Play, PlayState.Stop.transitionTo(.Play).?.to);
+    try testing.expectEqual(PlayState.Pause, PlayState.Play.transitionTo(.Pause).?.to);
+    try testing.expectEqual(PlayState.Stop, PlayState.Pause.transitionTo(.Stop).?.to);
+    try testing.expect(PlayState.Stop.transitionTo(.Pause) == null);
+    try testing.expect(PlayState.Stop.transitionTo(.Stop) == null);
 }
 
 test "pause is only meaningful while playing" {
-    try testing.expect(PlayState.Pause.apply(.pause) == null);
-    try testing.expect(PlayState.Stop.apply(.pause) == null);
+    try testing.expect(PlayState.Pause.transitionTo(.Pause) == null);
+    try testing.expect(PlayState.Stop.transitionTo(.Pause) == null);
 }
 
 test "play and stop are idempotent from their own state" {
-    try testing.expect(PlayState.Play.apply(.play) == null);
-    try testing.expect(PlayState.Stop.apply(.stop) == null);
+    try testing.expect(PlayState.Play.transitionTo(.Play) == null);
+    try testing.expect(PlayState.Stop.transitionTo(.Stop) == null);
 }
 
 test "play restarts playback from a paused state" {
-    const transition = PlayState.Pause.apply(.play).?;
+    const transition = PlayState.Pause.transitionTo(.Play).?;
     try testing.expectEqual(PlayState.Pause, transition.from);
     try testing.expectEqual(PlayState.Play, transition.to);
 }
 
 test "stop is always reachable from play or pause" {
-    try testing.expectEqual(PlayState.Stop, PlayState.Play.apply(.stop).?.to);
-    try testing.expectEqual(PlayState.Stop, PlayState.Pause.apply(.stop).?.to);
+    try testing.expectEqual(PlayState.Stop, PlayState.Play.transitionTo(.Stop).?.to);
+    try testing.expectEqual(PlayState.Stop, PlayState.Pause.transitionTo(.Stop).?.to);
 }

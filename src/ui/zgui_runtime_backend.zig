@@ -11,6 +11,7 @@ pub const BeginFrameInput = struct {
     framebuffer_size: PixelSize,
     font_atlas: *ui.FontAtlas,
     window_size: ui.Vec2,
+    ui_scale: f32 = 1,
     dt: f32,
 };
 
@@ -52,7 +53,7 @@ pub fn deinit(self: *Backend) void {
 
 pub fn beginFrame(self: *Backend, input: BeginFrameInput, runtime_events: []const zp.ZEvent) !Frame {
     const frame = Frame{
-        .events = try self.translateEvents(runtime_events),
+        .events = try self.translateEvents(runtime_events, input.ui_scale),
         .window_size = input.window_size,
         .framebuffer_size = input.framebuffer_size,
         .text_raster_scale = framebufferScale(input.window_size, input.framebuffer_size),
@@ -69,7 +70,7 @@ pub fn beginFrame(self: *Backend, input: BeginFrameInput, runtime_events: []cons
     return frame;
 }
 
-fn translateEvents(self: *Backend, runtime_events: []const zp.ZEvent) ![]const ui.PlatformEvent {
+fn translateEvents(self: *Backend, runtime_events: []const zp.ZEvent, ui_scale: f32) ![]const ui.PlatformEvent {
     self.events.clearRetainingCapacity();
     self.text_buffer.clearRetainingCapacity();
 
@@ -81,16 +82,16 @@ fn translateEvents(self: *Backend, runtime_events: []const zp.ZEvent) ![]const u
     try self.text_buffer.ensureTotalCapacity(self.allocator, text_capacity);
 
     for (runtime_events) |event| {
-        if (try self.toPlatformEvent(event)) |platform_event| {
+        if (try self.toPlatformEvent(event, ui_scale)) |platform_event| {
             try self.events.append(self.allocator, platform_event);
         }
     }
     return self.events.items;
 }
 
-fn toPlatformEvent(self: *Backend, event: zp.ZEvent) !?ui.PlatformEvent {
+fn toPlatformEvent(self: *Backend, event: zp.ZEvent, ui_scale: f32) !?ui.PlatformEvent {
     return switch (event) {
-        .MouseMove => |pos| .{ .mouse_move = .{ .x = pos.x, .y = pos.y } },
+        .MouseMove => |pos| .{ .mouse_move = .{ .x = pos.x / ui_scale, .y = pos.y / ui_scale } },
         .MousePressed => |button| .{ .mouse_down = mapMouseButton(button) orelse return null },
         .MouseReleased => |button| .{ .mouse_up = mapMouseButton(button) orelse return null },
         .MouseScroll => |scroll| .{ .scroll = .{ .x = scroll.x, .y = scroll.y } },
@@ -98,7 +99,7 @@ fn toPlatformEvent(self: *Backend, event: zp.ZEvent) !?ui.PlatformEvent {
         .KeyRepeated => |key| .{ .key_down = mapKey(key) },
         .KeyReleased => |key| .{ .key_up = mapKey(key) },
         .CharInput => |codepoint| try self.textInputEvent(codepoint),
-        .WindowResize => |resize| .{ .window_resize = .{ .x = @floatFromInt(resize.width), .y = @floatFromInt(resize.height) } },
+        .WindowResize => |resize| .{ .window_resize = .{ .x = @as(f32, @floatFromInt(resize.width)) / ui_scale, .y = @as(f32, @floatFromInt(resize.height)) / ui_scale } },
         .WindowClose => .window_close,
         .FramebufferResize, .ContentScaleChange => null,
     };
@@ -123,8 +124,8 @@ pub fn setCursor(window: *zp.Window, cursor: ui.CursorKind) void {
     }
 }
 
-pub fn toUiSize(size: zp.Window.WindowSize) ui.Vec2 {
-    return .{ .x = @floatFromInt(size.width), .y = @floatFromInt(size.height) };
+pub fn toUiSize(size: zp.Window.WindowSize, ui_scale: f32) ui.Vec2 {
+    return .{ .x = @as(f32, @floatFromInt(size.width)) / ui_scale, .y = @as(f32, @floatFromInt(size.height)) / ui_scale };
 }
 
 pub fn toPixelSize(size: zp.Window.WindowSize) PixelSize {

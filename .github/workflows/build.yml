@@ -7,21 +7,46 @@ on:
     branches: [main]
 
 jobs:
-  build:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    container: jackpar/x11-zig:0.16.0
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          - name: macOS
+            os: macos-15
+          - name: Windows
+            os: windows-2025
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install Linux OpenGL headers
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgl-dev
+
       # build.zig.zon deliberately uses sibling checkouts during development.
-      # Recreate that sibling layout in CI with the current default branch.
+      # Recreate that layout on each hosted runner.
       - name: Checkout zephyr-runtime
+        shell: bash
         run: git clone --depth 1 https://github.com/Zephyr-Engine/zephyr-runtime.git ../zephyr-runtime
 
       - name: Build project
-        run: zig build -Doptimize=ReleaseFast
+        shell: bash
+        run: zig build check
 
       - name: Run tests
+        shell: bash
         run: zig build test --summary all
