@@ -1,10 +1,11 @@
 const zp = @import("zephyr_runtime");
 const std = @import("std");
 
+const createProject = @import("../actions/root.zig").createProject;
+const native_file_dialog = @import("../platform/native_file_dialog.zig");
 const SceneInputCapture = @import("../ui/scene_input.zig");
 const EditorPlayback = @import("../state/play_state.zig");
 const action_mod = @import("actions.zig");
-const native_file_dialog = @import("../platform/native_file_dialog.zig");
 
 const EditorContext = @This();
 
@@ -60,23 +61,17 @@ fn registerActions(self: *EditorContext) !void {
     try self.actions.register(action_mod.ids.stop, action_mod.Action.bind("Stop", self, EditorContext.stop).withEnabled(EditorContext.canStop));
 }
 
-fn newProject(self: *EditorContext) void {
-    const selection = native_file_dialog.chooseDirectory(self.allocator, self.io, "Choose New Project Location") catch |err| {
-        std.log.err("could not open the native new-project picker: {}", .{err});
-        return;
-    };
+fn newProject(self: *EditorContext) !void {
+    const selection = try native_file_dialog.chooseDirectory(self.allocator, self.io, "Choose New Project Location");
 
     defer if (selection) |path| self.allocator.free(path);
     if (selection) |path| {
-        self.onNewProjectDirectory(path);
+        try self.onNewProjectDirectory(path);
     }
 }
 
-fn openProject(self: *EditorContext) void {
-    const selection = native_file_dialog.chooseDirectory(self.allocator, self.io, "Open Project") catch |err| {
-        std.log.err("could not open the native open-project picker: {}", .{err});
-        return;
-    };
+fn openProject(self: *EditorContext) !void {
+    const selection = try native_file_dialog.chooseDirectory(self.allocator, self.io, "Open Project");
     defer if (selection) |path| self.allocator.free(path);
 
     if (selection) |path| {
@@ -84,13 +79,16 @@ fn openProject(self: *EditorContext) void {
     }
 }
 
-fn saveProject(self: *EditorContext) void {
+fn saveProject(self: *EditorContext) !void {
     _ = self;
     std.log.info("Save Project selected (project saving is not implemented yet)", .{});
 }
 
-fn onNewProjectDirectory(self: *EditorContext, directory: []const u8) void {
-    _ = self;
+fn onNewProjectDirectory(self: *EditorContext, directory: []const u8) !void {
+    const project_name = try self.allocator.dupe(u8, std.fs.path.basename(directory));
+    defer self.allocator.free(project_name);
+
+    try createProject(self.allocator, self.io, directory, project_name);
     std.log.info("New Project selected directory: {s}", .{directory});
 }
 
@@ -99,16 +97,16 @@ fn onOpenProjectDirectory(self: *EditorContext, directory: []const u8) void {
     std.log.info("Open Project selected directory: {s}", .{directory});
 }
 
-fn play(self: *EditorContext) void {
-    self.transitionTo(.Play);
+fn play(self: *EditorContext) !void {
+    try self.transitionTo(.Play);
 }
 
-fn pause(self: *EditorContext) void {
-    self.transitionTo(.Pause);
+fn pause(self: *EditorContext) !void {
+    try self.transitionTo(.Pause);
 }
 
-fn stop(self: *EditorContext) void {
-    self.transitionTo(.Stop);
+fn stop(self: *EditorContext) !void {
+    try self.transitionTo(.Stop);
 }
 
 fn canPlay(self: *EditorContext) bool {
@@ -123,12 +121,10 @@ fn canStop(self: *EditorContext) bool {
     return self.playback.play_state != .Stop;
 }
 
-fn transitionTo(self: *EditorContext, state: EditorPlayback.PlayState) void {
+fn transitionTo(self: *EditorContext, state: EditorPlayback.PlayState) !void {
     const transition = self.playback.play_state.transitionTo(state) orelse return;
+    try self.executeTransition(transition.to);
     self.playback.play_state = transition.to;
-    self.executeTransition(transition.to) catch |err| {
-        std.log.err("failed to execute transition: {}", .{err});
-    };
 }
 
 fn executeTransition(self: *EditorContext, state: EditorPlayback.PlayState) !void {
