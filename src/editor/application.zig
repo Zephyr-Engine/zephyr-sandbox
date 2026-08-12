@@ -99,11 +99,15 @@ pub fn run(self: *EditorApplication) !void {
     var viewport_texture = try ui_renderer.registerExternalTexture(viewport_target.nativeTextureId());
     defer ui_renderer.destroyTexture(&viewport_texture);
 
-    var editor = try EditorUi.init(self.allocator, &ui_state, editor_context.actionRegistry(), viewport_texture, .{
-        .play = icons.play,
-        .pause = icons.pause,
-        .stop = icons.stop,
-    });
+    var editor = try EditorUi.init(
+        self.allocator,
+        &ui_state,
+        editor_context.actionRegistry(),
+        viewport_texture,
+        self.project,
+        self.io,
+        icons,
+    );
     defer editor.deinit(&ui_state);
 
     var ui_backend = Backend.init(self.allocator, &ui_renderer);

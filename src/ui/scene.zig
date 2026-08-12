@@ -17,19 +17,13 @@ pub fn init() Scene {
     return .{};
 }
 
-pub fn mount(self: *Scene, state: *ui.Ui, parent: ui.NodeId, services: panel.Services) !void {
-    _ = services;
+pub fn mount(self: *Scene, state: *ui.Ui, parent: ui.NodeId, _: panel.Services) !void {
     const root_node = try ui.widgets.column(state, parent, .{
         .width = .fill,
         .height = .fill,
-        .gap = 10,
+        .gap = 8,
         .padding = .{ .left = 12, .right = 12, .top = 12, .bottom = 12 },
-        .margin = .{ .top = 10, .bottom = 10 },
-        .background = .panel,
-        .radius_corners = .{
-            .top_right = state.theme.radius(.card),
-            .bottom_right = state.theme.radius(.card),
-        },
+        .background = .shell,
     });
     errdefer state.destroySubtree(root_node);
 

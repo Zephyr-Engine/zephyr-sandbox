@@ -1,11 +1,14 @@
 const std = @import("std");
 const ui = @import("zGUI");
+const zp = @import("zephyr_runtime");
 
+const EditorIcons = @import("../icons/editor_icons.zig");
 const actions = @import("../editor/actions.zig");
 const Workspace = @import("workspace.zig");
 const inspector = @import("inspector.zig");
 const viewport = @import("viewport.zig");
 const console = @import("console.zig");
+const assets = @import("assets.zig");
 const panel = @import("panel.zig");
 const scene = @import("scene.zig");
 
@@ -23,7 +26,9 @@ pub fn init(
     state: *ui.Ui,
     action_registry: *actions.Registry,
     viewport_texture: ui.TextureHandle,
-    icons: viewport.Icons,
+    project: *const zp.Project,
+    project_io: std.Io,
+    icons: EditorIcons,
 ) !EditorUi {
     var workspace = try Workspace.init(
         allocator,
@@ -33,14 +38,32 @@ pub fn init(
     errdefer workspace.deinit(state);
 
     const scene_window = try addPanel(&workspace, state, scene.descriptor, scene.init());
-    const viewport_window = try addPanel(&workspace, state, viewport.descriptor, viewport.init(viewport_texture, icons));
+    const viewport_window = try addPanel(&workspace, state, viewport.descriptor, viewport.init(
+        viewport_texture,
+        .{
+            .play = icons.play,
+            .pause = icons.pause,
+            .stop = icons.stop,
+        },
+    ));
+
     const inspector_window = try addPanel(&workspace, state, inspector.descriptor, inspector.init());
+    const assets_window = try addPanel(&workspace, state, assets.descriptor, assets.init(
+        allocator,
+        project,
+        project_io,
+        .{
+            .folder = icons.folder,
+            .file = icons.file,
+        },
+    ));
     const console_window = try addPanel(&workspace, state, console.descriptor, console.init());
 
     try createDefaultLayout(&workspace.dock, .{
         .scene = scene_window,
         .viewport = viewport_window,
         .inspector = inspector_window,
+        .assets = assets_window,
         .console = console_window,
     });
 
@@ -85,6 +108,7 @@ const DefaultWindows = struct {
     scene: ui.DockWindowId,
     viewport: ui.DockWindowId,
     inspector: ui.DockWindowId,
+    assets: ui.DockWindowId,
     console: ui.DockWindowId,
 };
 
@@ -97,7 +121,9 @@ fn createDefaultLayout(dock: *ui.DockSpace, windows: DefaultWindows) !void {
 
     const bottom = try dock.splitNode(right.old_node, .bottom, 0.74);
     try dock.setSplitMinimums(bottom.split, min_main_height, min_bottom_height);
+    try dock.moveWindowToLeaf(windows.assets, bottom.new_leaf);
     try dock.moveWindowToLeaf(windows.console, bottom.new_leaf);
+    _ = dock.dock.setActiveWindow(bottom.new_leaf, windows.assets);
 
     const left = try dock.splitNode(bottom.old_node, .left, 0.26);
     try dock.setSplitMinimums(left.split, min_side_width, min_center_width);

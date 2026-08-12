@@ -17,8 +17,7 @@ pub fn init() Console {
     return .{};
 }
 
-pub fn mount(self: *Console, state: *ui.Ui, parent: ui.NodeId, services: panel.Services) !void {
-    _ = services;
+pub fn mount(self: *Console, state: *ui.Ui, parent: ui.NodeId, _: panel.Services) !void {
     const root_node = try ui.widgets.column(state, parent, .{
         .width = .fill,
         .height = .fill,
