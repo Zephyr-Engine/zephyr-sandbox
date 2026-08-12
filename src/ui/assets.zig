@@ -26,7 +26,7 @@ const Item = struct {
     kind: ItemKind,
 };
 
-const refresh_interval_frames = 30;
+const refresh_interval_frames = 300;
 const grid_tile_width: f32 = 112;
 const grid_tile_height: f32 = 118;
 const grid_gap: f32 = 8;
