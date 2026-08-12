@@ -1,5 +1,6 @@
 const std = @import("std");
 const ui = @import("zGUI");
+const log = @import("../utilities/log.zig");
 
 pub const ActionId = u64;
 
@@ -23,18 +24,18 @@ pub const ids = struct {
 pub const Action = struct {
     label: []const u8,
     context: ?*anyopaque,
-    execute_fn: *const fn (?*anyopaque) void,
+    execute_fn: *const fn (?*anyopaque) anyerror!void,
     enabled_fn: ?*const fn (?*anyopaque) bool = null,
     checked_fn: ?*const fn (?*anyopaque) bool = null,
 
-    pub fn bind(label: []const u8, context: anytype, comptime execute_callback: fn (@TypeOf(context)) void) Action {
+    pub fn bind(label: []const u8, context: anytype, comptime execute_callback: fn (@TypeOf(context)) anyerror!void) Action {
         const Context = requireContextPointer(@TypeOf(context));
         return .{
             .label = label,
             .context = @ptrCast(@constCast(context)),
             .execute_fn = struct {
-                fn invoke(raw_context: ?*anyopaque) void {
-                    execute_callback(toContext(Context, raw_context));
+                fn invoke(raw_context: ?*anyopaque) !void {
+                    try execute_callback(toContext(Context, raw_context));
                 }
             }.invoke,
         };
@@ -70,8 +71,8 @@ pub const Action = struct {
         return if (self.checked_fn) |callback| callback(self.context) else false;
     }
 
-    fn execute(self: Action) void {
-        self.execute_fn(self.context);
+    fn execute(self: Action) !void {
+        try self.execute_fn(self.context);
     }
 };
 
@@ -101,12 +102,12 @@ pub const Registry = struct {
         return self.entries.get(id);
     }
 
-    pub fn invoke(self: *Registry, id: ActionId) bool {
+    pub fn invoke(self: *Registry, id: ActionId) !bool {
         const action = self.entries.get(id) orelse return false;
         if (!action.enabled()) {
             return false;
         }
-        action.execute();
+        try action.execute();
         return true;
     }
 
@@ -120,10 +121,15 @@ pub const Registry = struct {
         return action.checked();
     }
 
+    /// Adapts an action to zGUI's infallible event callback API. Failures are
+    /// logged here because zGUI cannot return them to its event loop.
     pub fn handler(self: *Registry, comptime id: ActionId) ui.EventHandler {
         return ui.EventHandler.bind(self, struct {
             fn activate(registry: *Registry, _: ui.Event) void {
-                _ = registry.invoke(id);
+                _ = registry.invoke(id) catch |err| {
+                    log.err("failed to invoke action: {}", .{err});
+                    return;
+                };
             }
         }.activate);
     }
@@ -155,7 +161,7 @@ test "registered actions share execution and enabled state" {
         allow: bool = true,
         selected: bool = false,
 
-        fn increment(self: *@This()) void {
+        fn increment(self: *@This()) !void {
             self.count += 1;
         }
 
@@ -173,12 +179,27 @@ test "registered actions share execution and enabled state" {
     defer registry.deinit();
     try registry.register(ids.play, Action.bind("Play", &state, State.increment).withEnabled(State.enabled).withChecked(State.checked));
 
-    try std.testing.expect(registry.invoke(ids.play));
+    try std.testing.expect(try registry.invoke(ids.play));
     try std.testing.expectEqual(@as(usize, 1), state.count);
     state.allow = false;
-    try std.testing.expect(!registry.invoke(ids.play));
+    try std.testing.expect(!(try registry.invoke(ids.play)));
     try std.testing.expectEqual(@as(usize, 1), state.count);
     try std.testing.expect(!registry.checked(ids.play));
     state.selected = true;
     try std.testing.expect(registry.checked(ids.play));
+}
+
+test "invocation propagates action failures" {
+    const State = struct {
+        fn fail(_: *@This()) !void {
+            return error.ActionFailed;
+        }
+    };
+
+    var state: State = .{};
+    var registry = Registry.init(std.testing.allocator);
+    defer registry.deinit();
+    try registry.register(ids.play, Action.bind("Fail", &state, State.fail));
+
+    try std.testing.expectError(error.ActionFailed, registry.invoke(ids.play));
 }

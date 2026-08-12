@@ -8,24 +8,54 @@ const ViewportTarget = @import("../viewport_target.zig");
 const Icons = @import("../icons/editor_icons.zig");
 const EditorUi = @import("../ui/editor_ui.zig");
 const EditorContext = @import("context.zig");
+const log = @import("../utilities/log.zig");
 const actions = @import("actions.zig");
 const Game = @import("../game.zig");
 
-pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project) !void {
+pub const EditorApplication = @This();
+
+project: *zp.Project,
+app: *zp.Application(Game.definition),
+watch_handle: *zp.WatchHandle,
+io: std.Io,
+allocator: std.mem.Allocator,
+
+pub fn init(allocator: std.mem.Allocator, io: std.Io, project: *zp.Project) !EditorApplication {
     const App = zp.Application(Game.definition);
     const app = try App.init(allocator, io, .{
         .width = null,
         .height = null,
         .title = "Zephyr Editor",
     }, project);
-    defer app.deinit();
+
+    return .{
+        .project = project,
+        .app = app,
+        .watch_handle = undefined,
+        .io = io,
+        .allocator = allocator,
+    };
+}
+
+pub fn deinit(self: *EditorApplication) void {
+    self.project.stopWatchingAssets(self.watch_handle);
+    self.project.deinit(self.allocator, self.io);
+    self.app.deinit();
+}
+
+pub fn initializeProject(self: *EditorApplication) !void {
+    self.watch_handle = try self.project.watchAssets(self.allocator, self.io);
+}
+
+pub fn run(self: *EditorApplication) !void {
+    const app = self.app;
     app.setDebugStatsEnabled(true);
 
     try app.start();
 
     const editor_context = try EditorContext.create(
-        allocator,
-        io,
+        self.allocator,
+        self.io,
         &app.runtime.world,
         &app.runtime.assets,
     );
@@ -41,17 +71,25 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
     try native_menu.addItem(file, "Open Project", actions.ids.open_project);
     try native_menu.addItem(file, "Save Project", actions.ids.save_project);
 
-    var ui_renderer = try ui.OpenGlRenderer.init(allocator, zp.Window.getProcAddress);
+    var ui_renderer = try ui.OpenGlRenderer.init(
+        self.allocator,
+        zp.Window.getProcAddress,
+    );
     defer ui_renderer.deinit();
 
     const font_bytes = @embedFile("../resources/fonts/Inter-Regular.ttf");
-    var font_atlas = try ui.FontAtlas.init(allocator, font_bytes, 1024, 1024);
+    var font_atlas = try ui.FontAtlas.init(
+        self.allocator,
+        font_bytes,
+        1024,
+        1024,
+    );
     defer font_atlas.deinit();
 
-    var icons = try Icons.init(&ui_renderer, allocator);
+    var icons = try Icons.init(&ui_renderer, self.allocator);
     defer icons.deinit(&ui_renderer);
 
-    var ui_state = try ui.Ui.init(allocator);
+    var ui_state = try ui.Ui.init(self.allocator);
     defer ui_state.deinit();
     ui_state.setFontAtlas(&font_atlas);
 
@@ -61,14 +99,14 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project: *const zp.Project)
     var viewport_texture = try ui_renderer.registerExternalTexture(viewport_target.nativeTextureId());
     defer ui_renderer.destroyTexture(&viewport_texture);
 
-    var editor = try EditorUi.init(allocator, &ui_state, editor_context.actionRegistry(), viewport_texture, .{
+    var editor = try EditorUi.init(self.allocator, &ui_state, editor_context.actionRegistry(), viewport_texture, .{
         .play = icons.play,
         .pause = icons.pause,
         .stop = icons.stop,
     });
     defer editor.deinit(&ui_state);
 
-    var ui_backend = Backend.init(allocator, &ui_renderer);
+    var ui_backend = Backend.init(self.allocator, &ui_renderer);
     defer ui_backend.deinit();
 
     while (app.window.shouldCloseWindow()) {
@@ -132,7 +170,10 @@ fn nativeMenuAction(context: ?*anyopaque, action: native_ui.ActionId) callconv(.
         native_menu_context.window.requestClose();
         return;
     }
-    _ = native_menu_context.registry.invoke(action);
+    _ = native_menu_context.registry.invoke(action) catch |err| {
+        log.err("failed to invoke action: {}", .{err});
+        return;
+    };
 }
 
 fn xwaylandScaleFactor() f32 {

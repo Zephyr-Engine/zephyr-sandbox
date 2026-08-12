@@ -69,7 +69,7 @@ test "action button mirrors registry enablement" {
     const State = struct {
         enabled: bool = true,
 
-        fn execute(self: *@This()) void {
+        fn execute(self: *@This()) !void {
             _ = self;
         }
 

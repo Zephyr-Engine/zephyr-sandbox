@@ -1,7 +1,8 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const editor_application = @import("editor/application.zig");
+const EditorApplication = @import("editor/application.zig");
+const actions = @import("actions/root.zig");
 const log = @import("utilities/log.zig");
 const zp = @import("zephyr_runtime");
 const cli = @import("cli/root.zig");
@@ -25,22 +26,23 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.free(project_root);
 
     if (options.create_project) {
-        try cli.createProject(init.gpa, init.io, project_root, options.project_name);
+        try actions.createProject(init.gpa, init.io, project_root, options.project_name);
         return;
     }
 
     var project = try zp.openProject(init.gpa, init.io, .{ .root_path = project_root });
-    defer project.deinit(init.gpa, init.io);
+    var editor_application = EditorApplication.init(init.gpa, init.io, &project) catch |err| {
+        log.err("Failed to initialize editor: {}", .{err});
+        return;
+    };
+    defer editor_application.deinit();
 
-    const watch_handle = try project.watchAssets(init.gpa, init.io);
-    defer project.stopWatchingAssets(watch_handle);
-
-    watch_handle.waitForInitialCook() catch |err| {
-        log.err("Failed to cook initial assets: {}", .{err});
+    editor_application.initializeProject() catch |err| {
+        log.err("Failed to initialize project: {}", .{err});
         return;
     };
 
-    editor_application.run(allocator(init.gpa), init.io, &project) catch |err| {
+    editor_application.run() catch |err| {
         log.err("Editor failed to start: {}", .{err});
         return;
     };
