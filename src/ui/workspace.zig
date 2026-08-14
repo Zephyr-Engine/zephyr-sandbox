@@ -45,7 +45,9 @@ pub fn init(allocator: std.mem.Allocator, state: *ui.Ui, services: panel.Service
 
 pub fn deinit(self: *Workspace, state: *ui.Ui) void {
     for (self.entries.items) |*item| {
-        if (item.window != ui.invalid_window) self.dock.closeWindow(item.window) catch {};
+        if (item.window != ui.invalid_window) {
+            self.dock.closeWindow(item.window) catch {};
+        }
         item.panel.deinit(state);
     }
     self.index.deinit(self.allocator);
@@ -57,15 +59,19 @@ pub fn deinit(self: *Workspace, state: *ui.Ui) void {
 
 pub fn registerPanel(self: *Workspace, state: *ui.Ui, instance: *panel.Instance) !ui.DockWindowId {
     const descriptor = instance.descriptor;
-    if (self.index.contains(descriptor.id)) return error.DuplicatePanel;
+    if (self.index.contains(descriptor.id)) {
+        return error.DuplicatePanel;
+    }
 
     try instance.mount(state, self.dock_host, self.services);
     errdefer instance.unmount(state);
+
     const window_id = try self.dock.createWindow(descriptor.title, instance.root(), descriptor.min_size, .{});
     errdefer self.dock.closeWindow(window_id) catch {};
 
     try self.entries.append(self.allocator, .{ .panel = instance.*, .window = window_id });
     errdefer _ = self.entries.pop();
+
     try self.index.put(self.allocator, descriptor.id, self.entries.items.len - 1);
     instance.* = undefined;
     return window_id;
@@ -74,7 +80,9 @@ pub fn registerPanel(self: *Workspace, state: *ui.Ui, instance: *panel.Instance)
 pub fn unregisterPanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !void {
     const entry_index = self.index.get(id) orelse return error.UnknownPanel;
     var removed = self.entries.items[entry_index];
-    if (removed.window != ui.invalid_window) try self.dock.closeWindow(removed.window);
+    if (removed.window != ui.invalid_window) {
+        try self.dock.closeWindow(removed.window);
+    }
     removed.panel.deinit(state);
 
     _ = self.index.remove(id);
@@ -87,13 +95,17 @@ pub fn unregisterPanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !void {
 
 pub fn openPanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !ui.DockWindowId {
     const item = self.lookupEntry(id) orelse return error.UnknownPanel;
-    if (item.window != ui.invalid_window) return item.window;
+    if (item.window != ui.invalid_window) {
+        return item.window;
+    }
 
     try item.panel.mount(state, self.dock_host, self.services);
     errdefer item.panel.unmount(state);
+
     const descriptor = item.panel.descriptor;
     const window_id = try self.dock.createWindow(descriptor.title, item.panel.root(), descriptor.min_size, .{});
     errdefer self.dock.closeWindow(window_id) catch {};
+
     try self.dock.moveWindowToLeaf(window_id, self.dock.rootLeaf());
     item.window = window_id;
     return window_id;
@@ -101,14 +113,19 @@ pub fn openPanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !ui.DockWindowId
 
 pub fn closePanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !void {
     const item = self.lookupEntry(id) orelse return error.UnknownPanel;
-    if (item.window == ui.invalid_window) return;
+    if (item.window == ui.invalid_window) {
+        return;
+    }
+
     try self.dock.closeWindow(item.window);
     item.window = ui.invalid_window;
     item.panel.unmount(state);
 }
 
 pub fn update(self: *Workspace, state: *ui.Ui, frame: panel.Frame) !void {
-    for (self.entries.items) |*item| try item.panel.update(state, frame);
+    for (self.entries.items) |*item| {
+        try item.panel.update(state, frame);
+    }
 }
 
 pub fn run(self: *Workspace, state: *ui.Ui, window_size: ui.Vec2) !ui.DockSpaceResult {
@@ -120,7 +137,7 @@ pub fn run(self: *Workspace, state: *ui.Ui, window_size: ui.Vec2) !ui.DockSpaceR
             .h = @max(1, window_size.y),
         },
         .handle_thickness = 4,
-        .tab_height = 30,
+        .tab_height = 26,
     });
 }
 
@@ -132,7 +149,10 @@ pub fn panelWindow(self: *Workspace, id: panel.Id) ?ui.DockWindowId {
 pub fn contentRect(self: *const Workspace, id: panel.Id) ?ui.Rect {
     const entry_index = self.index.get(id) orelse return null;
     const window_id = self.entries.items[entry_index].window;
-    if (window_id == ui.invalid_window) return null;
+    if (window_id == ui.invalid_window) {
+        return null;
+    }
+
     return self.dock.windowContentRect(window_id);
 }
 
