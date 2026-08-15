@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "zephyr_sandbox",
+        .name = "Zephyr Editor",
         .root_module = editor_mod,
     });
 

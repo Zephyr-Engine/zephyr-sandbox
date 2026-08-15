@@ -1,9 +1,8 @@
 const std = @import("std");
 const ui = @import("zGUI");
-const zp = @import("zephyr_runtime");
 
 const EditorIcons = @import("../icons/editor_icons.zig");
-const actions = @import("../editor/actions.zig");
+const EditorContext = @import("../editor/context.zig");
 const Workspace = @import("workspace.zig");
 const inspector = @import("inspector.zig");
 const viewport = @import("viewport.zig");
@@ -21,25 +20,36 @@ const EditorUi = @This();
 
 workspace: Workspace,
 
+pub const Dependencies = struct {
+    context: *EditorContext,
+    viewport_texture: *const viewport.TextureBinding,
+    icons: EditorIcons,
+};
+
 pub fn init(
     allocator: std.mem.Allocator,
     state: *ui.Ui,
-    action_registry: *actions.Registry,
-    viewport_texture: ui.TextureHandle,
-    project: *const zp.Project,
-    project_io: std.Io,
-    icons: EditorIcons,
+    dependencies: Dependencies,
 ) !EditorUi {
+    const ctx = dependencies.context;
+    const icons = dependencies.icons;
     var workspace = try Workspace.init(
         allocator,
         state,
-        .{ .actions = action_registry },
+        .{ .actions = ctx.actionRegistry() },
     );
     errdefer workspace.deinit(state);
 
-    const scene_window = try addPanel(&workspace, state, scene.descriptor, scene.init());
+    const scene_window = try addPanel(&workspace, state, scene.descriptor, scene.init(.{
+        .allocator = allocator,
+        .scenes = ctx.sceneController(),
+        .icons = .{
+            .camera = icons.camera,
+            .model = icons.model,
+        },
+    }));
     const viewport_window = try addPanel(&workspace, state, viewport.descriptor, viewport.init(
-        viewport_texture,
+        dependencies.viewport_texture,
         .{
             .play = icons.play,
             .pause = icons.pause,
@@ -48,15 +58,15 @@ pub fn init(
     ));
 
     const inspector_window = try addPanel(&workspace, state, inspector.descriptor, inspector.init());
-    const assets_window = try addPanel(&workspace, state, assets.descriptor, assets.init(
-        allocator,
-        project,
-        project_io,
-        .{
+    const assets_window = try addPanel(&workspace, state, assets.descriptor, assets.init(.{
+        .allocator = allocator,
+        .project = ctx.projectModel(),
+        .scenes = ctx.sceneController(),
+        .icons = .{
             .folder = icons.folder,
             .file = icons.file,
         },
-    ));
+    }));
     const console_window = try addPanel(&workspace, state, console.descriptor, console.init());
 
     try createDefaultLayout(&workspace.dock, .{

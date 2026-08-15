@@ -1,7 +1,8 @@
-const zp = @import("zephyr_runtime");
 const std = @import("std");
 const ui = @import("zGUI");
 
+const SceneController = @import("../editor/scene_controller.zig");
+const ProjectModel = @import("../editor/project_model.zig");
 const panel = @import("panel.zig");
 
 pub const panel_id = panel.id("editor.assets");
@@ -16,15 +17,8 @@ pub const Icons = struct {
     file: ui.TextureHandle,
 };
 
-const ItemKind = enum {
-    folder,
-    file,
-};
-
-const Item = struct {
-    path: []u8,
-    kind: ItemKind,
-};
+const ItemKind = ProjectModel.ItemKind;
+const Item = ProjectModel.Item;
 
 const refresh_interval_frames = 300;
 const grid_tile_width: f32 = 112;
@@ -34,8 +28,8 @@ const grid_gap: f32 = 8;
 const Assets = @This();
 
 allocator: std.mem.Allocator,
-project: *const zp.Project,
-io: std.Io,
+project: *ProjectModel,
+scenes: *SceneController,
 icons: Icons,
 items: std.ArrayList(Item) = .empty,
 history: std.ArrayList([]u8) = .empty,
@@ -49,13 +43,23 @@ path_label: ui.NodeId = ui.invalid_node,
 tile_nodes: std.ArrayList(ui.NodeId) = .empty,
 grid_columns: usize = 1,
 frames_since_refresh: u16 = refresh_interval_frames,
+last_clicked_tile: ?ui.NodeId = null,
+project_generation: u64,
 
-pub fn init(allocator: std.mem.Allocator, project: *const zp.Project, io: std.Io, icons: Icons) Assets {
+pub const Dependencies = struct {
+    allocator: std.mem.Allocator,
+    project: *ProjectModel,
+    scenes: *SceneController,
+    icons: Icons,
+};
+
+pub fn init(dependencies: Dependencies) Assets {
     return .{
-        .allocator = allocator,
-        .project = project,
-        .io = io,
-        .icons = icons,
+        .allocator = dependencies.allocator,
+        .project = dependencies.project,
+        .scenes = dependencies.scenes,
+        .icons = dependencies.icons,
+        .project_generation = dependencies.project.generation,
     };
 }
 
@@ -120,6 +124,15 @@ pub fn mount(self: *Assets, state: *ui.Ui, parent: ui.NodeId, _: panel.Services)
 }
 
 pub fn update(self: *Assets, state: *ui.Ui, _: panel.Frame) !void {
+    if (self.project_generation != self.project.generation) {
+        self.project_generation = self.project.generation;
+        self.resetProjectNavigation();
+        self.resetScroll(state);
+        try self.ensureHistory();
+        try self.refresh(state, true);
+        return;
+    }
+
     if (state.clicked(self.back_button) and self.history_index > 0) {
         self.history_index -= 1;
         self.resetScroll(state);
@@ -136,6 +149,15 @@ pub fn update(self: *Assets, state: *ui.Ui, _: panel.Frame) !void {
     for (self.tile_nodes.items, self.items.items) |tile, item| {
         if (item.kind == .folder and state.clicked(tile)) {
             try self.navigateTo(state, item.path);
+            return;
+        }
+        if (item.kind == .file and self.project.isScenePath(item.path) and state.clicked(tile)) {
+            if (self.last_clicked_tile == tile) {
+                self.last_clicked_tile = null;
+                try self.scenes.openScene(item.path);
+            } else {
+                self.last_clicked_tile = tile;
+            }
             return;
         }
     }
@@ -181,10 +203,11 @@ pub fn root(self: *const Assets) ui.NodeId {
 
 fn refresh(self: *Assets, state: *ui.Ui, force_rebuild: bool) !void {
     self.frames_since_refresh = 0;
-    var next: std.ArrayList(Item) = .empty;
+    var listing = try self.project.listDirectory(self.currentPath());
+    var next = listing.items;
+    listing.items = .empty;
+    listing.deinit();
     errdefer deinitItems(self.allocator, &next);
-
-    try self.collectCurrentDirectory(&next);
     std.mem.sort(Item, next.items, {}, lessThanItem);
 
     if (itemsEqual(self.items.items, next.items)) {
@@ -198,25 +221,6 @@ fn refresh(self: *Assets, state: *ui.Ui, force_rebuild: bool) !void {
     deinitItems(self.allocator, &self.items);
     self.items = next;
     try self.rebuildList(state);
-}
-
-fn collectCurrentDirectory(self: *Assets, items: *std.ArrayList(Item)) !void {
-    const path = self.currentPath();
-    if (path.len == 0) {
-        try appendItem(self.allocator, items, self.project.manifest.assets_dir, .folder);
-        try appendItem(self.allocator, items, self.project.manifest.scenes_dir, .folder);
-        return;
-    }
-
-    var dir = std.Io.Dir.openDir(self.project.root_dir, self.io, path, .{ .iterate = true }) catch return;
-    defer dir.close(self.io);
-    var iter = dir.iterate();
-    while (try iter.next(self.io)) |entry| {
-        const kind: ItemKind = if (entry.kind == .directory) .folder else .file;
-        const entry_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ path, entry.name });
-        errdefer self.allocator.free(entry_path);
-        try items.append(self.allocator, .{ .path = entry_path, .kind = kind });
-    }
 }
 
 fn rebuildList(self: *Assets, state: *ui.Ui) !void {
@@ -370,6 +374,15 @@ fn ensureHistory(self: *Assets) !void {
     self.history_index = 0;
 }
 
+fn resetProjectNavigation(self: *Assets) void {
+    deinitItems(self.allocator, &self.items);
+    self.items = .empty;
+    for (self.history.items) |path| self.allocator.free(path);
+    self.history.clearRetainingCapacity();
+    self.history_index = 0;
+    self.last_clicked_tile = null;
+}
+
 fn navigateTo(self: *Assets, state: *ui.Ui, path: []const u8) !void {
     while (self.history.items.len > self.history_index + 1) {
         self.allocator.free(self.history.pop().?);
@@ -390,13 +403,6 @@ fn resetScroll(self: *Assets, state: *ui.Ui) void {
 
 fn currentPath(self: *const Assets) []const u8 {
     return self.history.items[self.history_index];
-}
-
-fn appendItem(allocator: std.mem.Allocator, items: *std.ArrayList(Item), path: []const u8, kind: ItemKind) !void {
-    try items.append(allocator, .{
-        .path = try allocator.dupe(u8, path),
-        .kind = kind,
-    });
 }
 
 fn deinitItems(allocator: std.mem.Allocator, items: *std.ArrayList(Item)) void {

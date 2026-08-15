@@ -4,7 +4,6 @@ const std = @import("std");
 const EditorApplication = @import("editor/application.zig");
 const actions = @import("actions/root.zig");
 const log = @import("utilities/log.zig");
-const zp = @import("zephyr_runtime");
 const cli = @import("cli/root.zig");
 
 inline fn allocator(gpa: std.mem.Allocator) std.mem.Allocator {
@@ -30,22 +29,13 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    var project = try zp.openProject(init.gpa, init.io, .{ .root_path = project_root });
-    var editor_application = EditorApplication.init(init.gpa, init.io, &project) catch |err| {
+    var editor_application = EditorApplication.init(init.gpa, init.io, project_root) catch |err| {
         log.err("Failed to initialize editor: {}", .{err});
         return;
     };
     defer editor_application.deinit();
 
-    editor_application.initializeProject() catch |err| {
-        log.err("Failed to initialize project: {}", .{err});
-        return;
-    };
-
-    editor_application.run() catch |err| {
-        log.err("Editor failed to start: {}", .{err});
-        return;
-    };
+    editor_application.run() catch |err| log.err("Editor failed: {}", .{err});
 }
 
 test {

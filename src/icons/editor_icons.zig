@@ -9,6 +9,8 @@ pause: ui.TextureHandle = .none,
 stop: ui.TextureHandle = .none,
 folder: ui.TextureHandle = .none,
 file: ui.TextureHandle = .none,
+camera: ui.TextureHandle = .none,
+model: ui.TextureHandle = .none,
 
 pub fn init(renderer: *ui.OpenGlRenderer, allocator: std.mem.Allocator) !Icons {
     var textures: Icons = .{};
@@ -44,6 +46,18 @@ pub fn init(renderer: *ui.OpenGlRenderer, allocator: std.mem.Allocator) !Icons {
         "file.png",
         @embedFile("../resources/assets/file.png"),
     );
+    textures.camera = try loadMask(
+        renderer,
+        allocator,
+        "camera.png",
+        @embedFile("../resources/assets/camera.png"),
+    );
+    textures.model = try loadMask(
+        renderer,
+        allocator,
+        "model.png",
+        @embedFile("../resources/assets/model.png"),
+    );
     return textures;
 }
 
@@ -53,6 +67,8 @@ pub fn deinit(self: *Icons, renderer: *ui.OpenGlRenderer) void {
     renderer.destroyTexture(&self.stop);
     renderer.destroyTexture(&self.folder);
     renderer.destroyTexture(&self.file);
+    renderer.destroyTexture(&self.camera);
+    renderer.destroyTexture(&self.model);
 }
 
 fn load(
