@@ -10,7 +10,11 @@ pub fn reset(self: *SceneInputCapture) void {
 }
 
 pub fn accepts(self: *SceneInputCapture, event: zp.ZEvent, viewport_rect: ui.Rect, mouse_pos: ui.Vec2, ui_owns_mouse: bool) bool {
-    const scene_target = viewport_rect.contains(mouse_pos) and !ui_owns_mouse;
+    return self.acceptsWithUi(event, viewport_rect, mouse_pos, .{ .wants_mouse = ui_owns_mouse });
+}
+
+pub fn acceptsWithUi(self: *SceneInputCapture, event: zp.ZEvent, viewport_rect: ui.Rect, mouse_pos: ui.Vec2, ui_capture: ui.InputCapture) bool {
+    const scene_target = viewport_rect.contains(mouse_pos) and !ui_capture.wants_mouse;
     return switch (event) {
         .MouseMove => true,
         .MousePressed => pressed: {
@@ -26,8 +30,8 @@ pub fn accepts(self: *SceneInputCapture, event: zp.ZEvent, viewport_rect: ui.Rec
             break :released was_active or scene_target;
         },
         .MouseScroll => self.active or scene_target,
-        .KeyReleased => true,
-        .KeyPressed, .KeyRepeated => self.active or scene_target,
+        .KeyReleased => !ui_capture.wants_keyboard,
+        .KeyPressed, .KeyRepeated => !ui_capture.wants_keyboard and (self.active or scene_target),
         .WindowResize, .FramebufferResize, .ContentScaleChange, .WindowClose => true,
         .CharInput => false,
     };
@@ -39,10 +43,10 @@ pub fn processSceneEvents(
     runtime_events: []const zp.ZEvent,
     viewport_rect: ui.Rect,
     mouse_pos: ui.Vec2,
-    ui_owns_mouse: bool,
+    ui_capture: ui.InputCapture,
 ) void {
     for (runtime_events) |event| {
-        if (self.accepts(event, viewport_rect, mouse_pos, ui_owns_mouse)) {
+        if (self.acceptsWithUi(event, viewport_rect, mouse_pos, ui_capture)) {
             input.applyEvent(event);
         }
     }
@@ -139,8 +143,25 @@ test "processSceneEvents forwards only accepted events to input" {
         .{ .CharInput = 'x' },
     };
 
-    capture.processSceneEvents(&input, &events, inside_viewport, inside_pos, false);
+    capture.processSceneEvents(&input, &events, inside_viewport, inside_pos, .{});
 
     try testing.expect(input.isMouseButtonDown(.Left));
     try testing.expect(capture.active);
+}
+
+test "focused editor field keeps keyboard events out of scene input" {
+    var input: zp.Input = .{};
+    var capture: SceneInputCapture = .{};
+    const events = [_]zp.ZEvent{
+        .{ .KeyPressed = .A },
+        .{ .KeyRepeated = .Backspace },
+        .{ .KeyReleased = .A },
+        .{ .CharInput = 'x' },
+    };
+    capture.processSceneEvents(&input, &events, inside_viewport, inside_pos, .{
+        .wants_keyboard = true,
+        .wants_text_input = true,
+    });
+    try testing.expect(!input.isKeyDown(.A));
+    try testing.expectEqual(@as(usize, 0), input.textInput().len);
 }

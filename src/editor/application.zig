@@ -122,6 +122,7 @@ pub fn run(self: *EditorApplication) !void {
         const native_ui_scale = xwaylandScaleFactor();
         const runtime_events = app.beginFrame();
         const frame = try ui_backend.beginFrame(.{
+            .window = app.window,
             .window_size = Backend.toUiSize(window_size, native_ui_scale),
             .framebuffer_size = Backend.toPixelSize(app.window.getFramebufferSize()),
             .ui_scale = native_ui_scale,
@@ -139,12 +140,14 @@ pub fn run(self: *EditorApplication) !void {
 
         const viewport_rect = editor.viewportRect();
         _ = try viewport_target.ensureSize(viewport_rect, frame.text_raster_scale);
+        var input_capture = ui_state.inputCapture();
+        input_capture.wants_mouse = input_capture.wants_mouse or editor.isInteracting();
         editor_context.sceneController().sceneInputCapture().processSceneEvents(
             app.input(),
             runtime_events,
             viewport_rect,
             ui_state.mousePosition(),
-            ui_state.inputCapture().wants_mouse or editor.isInteracting(),
+            input_capture,
         );
 
         switch (editor_context.sceneController().playState()) {
