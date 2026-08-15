@@ -1,6 +1,6 @@
 const std = @import("std");
 const ui = @import("zGUI");
-const zp = @import("zephyr_runtime");
+const zimp = @import("zimp");
 
 const Icons = @This();
 
@@ -77,7 +77,7 @@ fn load(
     filename: []const u8,
     encoded: []const u8,
 ) !ui.TextureHandle {
-    var decoded = try zp.RawTexture.init(filename, @constCast(encoded));
+    var decoded = try zimp.assets.raw.texture.RawTexture.init(filename, @constCast(encoded));
     defer decoded.deinit(allocator);
 
     const pixels = switch (decoded.pixels) {
@@ -94,7 +94,7 @@ fn loadMask(
     filename: []const u8,
     encoded: []const u8,
 ) !ui.TextureHandle {
-    var decoded = try zp.RawTexture.init(filename, @constCast(encoded));
+    var decoded = try zimp.assets.raw.texture.RawTexture.init(filename, @constCast(encoded));
     defer decoded.deinit(allocator);
 
     const pixels = switch (decoded.pixels) {

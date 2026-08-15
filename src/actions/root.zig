@@ -1,4 +1,4 @@
-const zp = @import("zephyr_runtime");
+const zimp = @import("zimp");
 const std = @import("std");
 
 const log = @import("../utilities/log.zig");
@@ -16,7 +16,7 @@ pub fn createProject(
     defer allocator.free(project_name);
 
     const random_source: std.Random.IoSource = .{ .io = io };
-    const manifest = zp.ProjectManifest{
+    const manifest = zimp.ProjectManifest{
         .project_id = .v4(random_source.interface()),
         .name = project_name,
     };

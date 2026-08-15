@@ -1,6 +1,7 @@
 const zp = @import("zephyr_runtime");
 const std = @import("std");
 const ui = @import("zGUI");
+const zimp = @import("zimp");
 
 const SceneController = @import("../editor/scene_controller.zig");
 const panel = @import("panel.zig");
@@ -159,7 +160,7 @@ fn rebuildList(self: *Scene, state: *ui.Ui) !void {
     self.list_node = list_node;
 }
 
-fn addRow(self: *Scene, state: *ui.Ui, parent: ui.NodeId, entity: anytype) !void {
+fn addRow(self: *Scene, state: *ui.Ui, parent: ui.NodeId, entity: zimp.scene.SceneEntity) !void {
     const selected = if (self.scenes.selectedEntity()) |id| id.eql(entity.id) else false;
     const row = try ui.widgets.button(state, parent, "", state.theme.style(.{
         .width = .fill,
@@ -200,14 +201,14 @@ fn addRow(self: *Scene, state: *ui.Ui, parent: ui.NodeId, entity: anytype) !void
     try self.rows.append(self.allocator, .{ .node = row, .entity_id = entity.id });
 }
 
-fn itemKind(components: anytype) ItemKind {
+fn itemKind(components: []const zimp.scene.SceneComponent) ItemKind {
     for (components) |component| {
         if (component.type_id.eql(camera_component_id)) return .camera;
     }
     return .model;
 }
 
-fn containsEntity(entities: anytype, id: zp.SceneEntityId) bool {
+fn containsEntity(entities: []const zimp.scene.SceneEntity, id: zp.SceneEntityId) bool {
     for (entities) |entity| {
         if (entity.id.eql(id)) return true;
     }
@@ -215,8 +216,7 @@ fn containsEntity(entities: anytype, id: zp.SceneEntityId) bool {
 }
 
 test "scene item kind prefers a camera over a mesh renderer" {
-    const Component = struct { type_id: zp.ComponentTypeId };
-    const components = [_]Component{
+    const components = [_]zimp.scene.SceneComponent{
         .{ .type_id = mesh_component_id },
         .{ .type_id = camera_component_id },
     };

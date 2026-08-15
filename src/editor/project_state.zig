@@ -1,10 +1,11 @@
 const zp = @import("zephyr_runtime");
+const zimp = @import("zimp");
 const std = @import("std");
 
 const ProjectState = @This();
 
 project: *zp.Project,
-watch_handle: *zp.WatchHandle,
+watch_handle: *zimp.WatchHandle,
 
 pub fn init(allocator: std.mem.Allocator, io: std.Io, root_path: []const u8) !ProjectState {
     const project = try allocator.create(zp.Project);
