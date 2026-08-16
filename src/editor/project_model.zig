@@ -1,7 +1,6 @@
 const std = @import("std");
+const zimp = @import("zimp");
 const zp = @import("zephyr_runtime");
-
-const LoadSceneResult = @typeInfo(@TypeOf(zp.Project.loadScene)).@"fn".return_type.?;
 
 const ProjectModel = @This();
 
@@ -77,7 +76,7 @@ pub fn isScenePath(self: *const ProjectModel, path: []const u8) bool {
     return isScenePathIn(self.project.manifest.scenes_dir, path);
 }
 
-pub fn loadScene(self: *const ProjectModel, path: []const u8) LoadSceneResult {
+pub fn loadScene(self: *const ProjectModel, path: []const u8) !zimp.scene.SceneDocument {
     return self.project.loadScene(self.allocator, self.io, path);
 }
 

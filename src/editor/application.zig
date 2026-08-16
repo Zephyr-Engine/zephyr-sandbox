@@ -228,4 +228,5 @@ test {
     _ = @import("context.zig");
     _ = @import("project_state.zig");
     _ = @import("scene_controller.zig");
+    _ = @import("scene_mutation.zig");
 }

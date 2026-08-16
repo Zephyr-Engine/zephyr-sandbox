@@ -116,13 +116,17 @@ pub fn root(self: *const Scene) ui.NodeId {
 
 fn refresh(self: *Scene, state: *ui.Ui, force: bool) !void {
     const next_revision = self.scenes.revision();
-    if (!force and self.scene_revision == next_revision) return;
+    if (!force and self.scene_revision == next_revision) {
+        return;
+    }
     self.scene_revision = next_revision;
 
     const document = self.scenes.activeDocument();
     if (document) |scene| {
         if (self.scenes.selectedEntity()) |selected| {
-            if (!containsEntity(scene.entities, selected)) self.scenes.selectEntity(null);
+            if (!containsEntity(scene.document.entities, selected)) {
+                self.scenes.selectEntity(null);
+            }
         }
     } else {
         self.scenes.selectEntity(null);
@@ -132,7 +136,9 @@ fn refresh(self: *Scene, state: *ui.Ui, force: bool) !void {
 }
 
 fn rebuildList(self: *Scene, state: *ui.Ui) !void {
-    if (self.list_node != ui.invalid_node) state.destroySubtree(self.list_node);
+    if (self.list_node != ui.invalid_node) {
+        state.destroySubtree(self.list_node);
+    }
     self.rows.clearRetainingCapacity();
 
     const list_node = try ui.widgets.column(state, self.body_node, .{
@@ -143,8 +149,8 @@ fn rebuildList(self: *Scene, state: *ui.Ui) !void {
     });
     errdefer state.destroySubtree(list_node);
 
-    if (self.scenes.activeDocument()) |document| {
-        for (document.entities) |entity| {
+    if (self.scenes.activeDocument()) |scene| {
+        for (scene.document.entities) |entity| {
             try self.addRow(state, list_node, entity);
         }
     } else {

@@ -1,12 +1,11 @@
 const zp = @import("zephyr_runtime");
-
+const SceneMutation = @import("scene_mutation.zig").Mutation;
 const SceneInputCapture = @import("../ui/scene_input.zig");
 const EditorPlayback = @import("../state/play_state.zig");
 const ProjectModel = @import("project_model.zig");
 const Game = @import("../game.zig");
 
 const Runtime = zp.Runtime(Game.definition);
-const ActiveDocument = @typeInfo(@TypeOf(zp.World.activeSceneDocument)).@"fn".return_type.?;
 
 const SceneController = @This();
 
@@ -49,8 +48,16 @@ pub fn openScene(self: *SceneController, path: []const u8) !void {
     self.revision_number +%= 1;
 }
 
-pub fn activeDocument(self: *const SceneController) ActiveDocument {
-    return self.runtime.world.activeSceneDocument();
+pub fn activeDocument(self: *SceneController) ?*zp.scene_schema.LoadedScene {
+    return @constCast(self.runtime.world.activeSceneDocument());
+}
+
+pub fn commitSceneMutation(self: *SceneController, mutation: SceneMutation) !void {
+    const active_scene = self.activeDocument();
+    if (active_scene) |scene| {
+        try mutation.apply(scene);
+        self.revision_number +%= 1;
+    }
 }
 
 pub fn selectEntity(self: *SceneController, entity: ?zp.SceneEntityId) void {
@@ -113,7 +120,7 @@ fn executeTransition(self: *SceneController, state: EditorPlayback.PlayState) !v
         .Play => self.playback.scene_camera,
         .Pause => self.playback.editor_camera,
         .Stop => blk: {
-            try self.runtime.world.resetActiveScene(&self.runtime.assets);
+            try self.runtime.world.resetActiveScene();
             self.playback.scene_camera = zp.activeCamera(&self.runtime.world.world) orelse return error.NoActiveCamera;
             self.selected_entity = null;
             break :blk self.playback.editor_camera;
