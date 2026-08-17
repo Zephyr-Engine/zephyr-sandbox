@@ -59,6 +59,13 @@ const SetField = struct {
     value: Value,
 };
 
+const AddField = struct {
+    entity_id: SceneEntityId,
+    type_id: ComponentTypeId,
+    field_number: u32,
+    value: Value,
+};
+
 const RemoveField = struct {
     entity_id: SceneEntityId,
     type_id: ComponentTypeId,
@@ -74,6 +81,7 @@ pub const Mutation = union(enum) {
     add_component: AddComponent,
     remove_component: RemoveComponent,
     set_field: SetField,
+    add_field: AddField,
     remove_field: RemoveField,
 
     pub fn apply(self: *const Mutation, scene: *LoadedScene) !void {
@@ -86,6 +94,7 @@ pub const Mutation = union(enum) {
             .add_component => |add| applyAddComponent(scene, add),
             .remove_component => |remove| applyRemoveComponent(scene, remove),
             .set_field => |set| applySetField(scene, set),
+            .add_field => |add| applyAddField(scene, add),
             .remove_field => |remove| applyRemoveField(scene, remove),
         };
     }
@@ -269,7 +278,11 @@ fn applySetActiveCamera(scene: *LoadedScene, input: SetActiveCamera) !void {
         _ = try requireEntity(scene, id);
     }
     scene.document.active_camera = input.id;
-    try scene.setActiveCamera(input.id.?);
+    if (input.id) |id| {
+        try scene.setActiveCamera(id);
+    } else {
+        scene.clearActiveCamera();
+    }
 }
 
 fn applyAddComponent(scene: *LoadedScene, input: AddComponent) !void {
@@ -334,11 +347,32 @@ fn applySetField(scene: *LoadedScene, input: SetField) !void {
     const component = &entity.components[component_index];
     const value = try input.value.clone(scene.document.arena.allocator());
 
-    if (component.fieldIndex(input.field_number)) |index| {
-        component.fields[index].value = value;
-        try scene.setField(entity, input.type_id, input.field_number, value);
-        return;
+    const index = component.fieldIndex(input.field_number) orelse return error.MissingField;
+    component.fields[index].value = value;
+    try scene.setField(entity, input.type_id, input.field_number, value);
+}
+
+fn applyAddField(scene: *LoadedScene, input: AddField) !void {
+    if (input.field_number == 0) {
+        return error.ZeroFieldNumber;
     }
+
+    if (input.value == .none) {
+        return error.InvalidFieldValue;
+    }
+
+    const entity_index = try requireEntity(scene, input.entity_id);
+    const entity = &scene.document.entities[entity_index];
+    const component_index = entity.componentIndex(input.type_id) orelse {
+        return error.MissingComponent;
+    };
+
+    const component = &entity.components[component_index];
+    if (component.fieldIndex(input.field_number) != null) {
+        return error.DuplicateFieldNumber;
+    }
+
+    const value = try input.value.clone(scene.document.arena.allocator());
 
     const gpa = scene.document.arena.allocator();
     const new_fields = try gpa.alloc(
@@ -353,9 +387,14 @@ fn applySetField(scene: *LoadedScene, input: SetField) !void {
     };
 
     component.fields = new_fields;
+    try scene.addField(entity, input.type_id, input.field_number, value);
 }
 
 fn applyRemoveField(scene: *LoadedScene, input: RemoveField) !void {
+    if (input.field_number == 0) {
+        return error.ZeroFieldNumber;
+    }
+
     const entity_index = try requireEntity(scene, input.entity_id);
     const entity = &scene.document.entities[entity_index];
     const component_index = entity.componentIndex(input.type_id) orelse {
@@ -376,6 +415,7 @@ fn applyRemoveField(scene: *LoadedScene, input: RemoveField) !void {
     @memcpy(new_fields[remove_index..], component.fields[remove_index + 1 ..]);
 
     component.fields = new_fields;
+    try scene.removeField(entity, input.type_id, input.field_number);
 }
 
 const testing = std.testing;
@@ -387,25 +427,59 @@ const child_id = SceneEntityId.parseComptime("22222222-2222-4222-8222-2222222222
 const grandchild_id = SceneEntityId.parseComptime("33333333-3333-4333-8333-333333333333");
 const created_id = SceneEntityId.parseComptime("44444444-4444-4444-8444-444444444444");
 const missing_id = SceneEntityId.parseComptime("55555555-5555-4555-8555-555555555555");
-const component_id = ComponentTypeId.parseComptime("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-const extra_component_id = ComponentTypeId.parseComptime("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+const MutationComponent = struct {
+    value: i32 = 0,
+    enabled: bool = false,
+    target: SceneEntityId = SceneEntityId.zero,
+
+    pub const schema_meta: zimp.scene.SchemaMeta = .{
+        .id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        .name = "MutationComponent",
+        .version = 1,
+        .fields = &.{
+            .{ .name = "value", .number = 1 },
+            .{ .name = "enabled", .number = 2 },
+            .{ .name = "target", .number = 3 },
+        },
+    };
+};
+
+const ExtraMutationComponent = struct {
+    value: i32 = 0,
+
+    pub const schema_meta: zimp.scene.SchemaMeta = .{
+        .id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        .name = "ExtraMutationComponent",
+        .version = 1,
+        .fields = &.{.{ .name = "value", .number = 1 }},
+    };
+};
+
+const component_id = ComponentTypeId.parseComptime(MutationComponent.schema_meta.id);
+const extra_component_id = ComponentTypeId.parseComptime(ExtraMutationComponent.schema_meta.id);
+const transform_component_id = ComponentTypeId.parseComptime(zp.components.TransformComponent.schema_meta.id);
+const camera_component_id = ComponentTypeId.parseComptime(zp.components.CameraComponent.schema_meta.id);
 
 fn testDocument() !SceneDocument {
     var scene = try SceneDocument.init(testing.allocator, test_scene_id, test_project_id, "Mutation test");
     errdefer scene.deinit();
 
     const storage = scene.arena.allocator();
-    const fields = try storage.dupe(SceneField, &.{.{
-        .number = 1,
-        .value = .{ .string = "Original" },
-    }});
+    const fields = try storage.dupe(SceneField, &.{
+        .{ .number = 1, .value = .{ .i32 = 7 } },
+        .{ .number = 3, .value = .{ .entity_ref = SceneEntityId.zero } },
+    });
     const components = try storage.dupe(SceneComponent, &.{.{
         .type_id = component_id,
         .fields = fields,
     }});
+    const child_components = try storage.dupe(SceneComponent, &.{
+        .{ .type_id = transform_component_id, .fields = &.{} },
+        .{ .type_id = camera_component_id, .fields = &.{} },
+    });
     scene.entities = try storage.dupe(SceneEntity, &.{
         .{ .id = root_id, .name = "Root", .components = components, .prefab = .{} },
-        .{ .id = child_id, .parent_id = root_id, .name = "Child", .components = &.{}, .prefab = .{} },
+        .{ .id = child_id, .parent_id = root_id, .name = "Child", .components = child_components, .prefab = .{} },
         .{ .id = grandchild_id, .parent_id = child_id, .name = "Grandchild", .components = &.{}, .prefab = .{} },
     });
     return scene;
@@ -419,15 +493,23 @@ fn applyToClone(source: *const SceneDocument, mutation: Mutation) !SceneDocument
 }
 
 fn applyToDocument(document: *SceneDocument, mutation: Mutation) !void {
-    var scene: LoadedScene = .{
-        .instance = undefined,
-        .registry = undefined,
-        .assets = undefined,
-        .world = undefined,
-        .document = document.*,
-    };
+    var world = zp.EcsWorld.init(testing.allocator);
+    defer world.deinit();
+    inline for (.{ MutationComponent, ExtraMutationComponent, zp.components.TransformComponent, zp.components.CameraComponent }) |Component| {
+        _ = try world.registerType(Component, .{ .schema_hash = 0 });
+    }
+    var registry = zp.scene_schema.SchemaRegistry.init(testing.allocator);
+    defer registry.deinit();
+    inline for (.{ MutationComponent, ExtraMutationComponent, zp.components.TransformComponent, zp.components.CameraComponent }) |Component| {
+        try registry.register(Component);
+    }
+    var assets: zp.AssetManager = undefined;
+    var scene = try LoadedScene.init(testing.allocator, document.*, &registry, &assets, &world);
+    errdefer scene.instance.deinit(&world);
+    try scene.start();
     try mutation.apply(&scene);
     document.* = scene.document;
+    scene.instance.deinit(&world);
 }
 
 test "create and rename mutations preserve the source document" {
@@ -485,7 +567,7 @@ test "delete mutation implements child policies and preserves references" {
     try testing.expectEqual(@as(usize, 1), subtree.entities.len);
     try testing.expect(subtree.entities[0].id.eql(root_id));
 
-    source.entities[0].components[0].fields[0].value = .{ .entity_ref = child_id };
+    source.entities[0].components[0].fields[1].value = .{ .entity_ref = child_id };
     var referenced = try source.clone(testing.allocator);
     defer referenced.deinit();
     const referenced_delete = Mutation{ .delete_entity = .{ .id = child_id, .policy = .delete_subtree } };
@@ -521,8 +603,7 @@ test "component mutations clone additions and reject invalid removals" {
     var source = try testDocument();
     defer source.deinit();
 
-    var label = [_]u8{ 'E', 'x', 't', 'r', 'a' };
-    var extra_fields = [_]SceneField{.{ .number = 1, .value = .{ .string = &label } }};
+    var extra_fields = [_]SceneField{.{ .number = 1, .value = .{ .i32 = 42 } }};
     const add = Mutation{ .add_component = .{
         .entity = root_id,
         .component = .{
@@ -532,9 +613,8 @@ test "component mutations clone additions and reject invalid removals" {
     } };
     var candidate = try applyToClone(&source, add);
     defer candidate.deinit();
-    label[0] = 'X';
     try testing.expectEqual(@as(usize, 2), candidate.entities[0].components.len);
-    try testing.expectEqualStrings("Extra", candidate.entities[0].components[1].fields[0].value.string);
+    try testing.expectEqual(@as(i32, 42), candidate.entities[0].components[1].fields[0].value.i32);
 
     try testing.expectError(error.DuplicateComponentTypeId, applyToDocument(&candidate, add));
     const remove = Mutation{ .remove_component = .{ .entity = root_id, .type_id = extra_component_id } };
@@ -544,30 +624,29 @@ test "component mutations clone additions and reject invalid removals" {
     try testing.expectError(error.MissingComponent, applyToDocument(&candidate, missing));
 }
 
-test "field mutations replace, append, clone, and remove values" {
+test "field mutations replace, add, clone, and remove values" {
     var source = try testDocument();
     defer source.deinit();
 
-    var replacement = [_]u8{ 'R', 'e', 'p', 'l', 'a', 'c', 'e', 'd' };
     var candidate = try applyToClone(&source, .{ .set_field = .{
         .entity_id = root_id,
         .type_id = component_id,
         .field_number = 1,
-        .value = .{ .string = &replacement },
+        .value = .{ .i32 = 9 },
     } });
     defer candidate.deinit();
-    replacement[0] = 'X';
-    try testing.expectEqualStrings("Replaced", candidate.entities[0].components[0].fields[0].value.string);
-    try testing.expectEqualStrings("Original", source.entities[0].components[0].fields[0].value.string);
+    try testing.expectEqual(@as(i32, 9), candidate.entities[0].components[0].fields[0].value.i32);
+    try testing.expectEqual(@as(i32, 7), source.entities[0].components[0].fields[0].value.i32);
 
-    const append = Mutation{ .set_field = .{
+    const add = Mutation{ .add_field = .{
         .entity_id = root_id,
         .type_id = component_id,
         .field_number = 2,
         .value = .{ .bool = true },
     } };
-    try applyToDocument(&candidate, append);
-    try testing.expectEqual(@as(usize, 2), candidate.entities[0].components[0].fields.len);
+    try applyToDocument(&candidate, add);
+    try testing.expectEqual(@as(usize, 3), candidate.entities[0].components[0].fields.len);
+    try testing.expectError(error.DuplicateFieldNumber, applyToDocument(&candidate, add));
 
     const remove = Mutation{ .remove_field = .{
         .entity_id = root_id,
@@ -575,8 +654,16 @@ test "field mutations replace, append, clone, and remove values" {
         .field_number = 2,
     } };
     try applyToDocument(&candidate, remove);
-    try testing.expectEqual(@as(usize, 1), candidate.entities[0].components[0].fields.len);
+    try testing.expectEqual(@as(usize, 2), candidate.entities[0].components[0].fields.len);
     try testing.expectError(error.MissingField, applyToDocument(&candidate, remove));
+
+    const missing_set = Mutation{ .set_field = .{
+        .entity_id = root_id,
+        .type_id = component_id,
+        .field_number = 2,
+        .value = .{ .bool = true },
+    } };
+    try testing.expectError(error.MissingField, applyToDocument(&candidate, missing_set));
 
     const zero = Mutation{ .set_field = .{
         .entity_id = root_id,
