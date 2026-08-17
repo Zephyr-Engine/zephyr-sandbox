@@ -17,23 +17,6 @@ pub const DeletePolicy = enum {
     delete_subtree,
 };
 
-pub const ApplyError = error{
-    DuplicateEntityId,
-    MissingEntity,
-    MissingParentEntity,
-    EntityParentCycle,
-    EntityHasChildren,
-    EntityStillReferenced,
-    DuplicateComponentTypeId,
-    MissingComponent,
-    MissingField,
-    ZeroEntityId,
-    ZeroComponentTypeId,
-    ZeroFieldNumber,
-    InvalidFieldValue,
-    OutOfMemory,
-};
-
 const CreateEntity = struct {
     id: SceneEntityId,
     parent_id: ?SceneEntityId,
@@ -108,7 +91,7 @@ pub const Mutation = union(enum) {
     }
 };
 
-fn requireEntity(scene: *LoadedScene, id: SceneEntityId) ApplyError!usize {
+fn requireEntity(scene: *LoadedScene, id: SceneEntityId) !usize {
     return scene.document.entityIndex(id) orelse error.MissingEntity;
 }
 
@@ -151,13 +134,13 @@ fn applyCreateEntity(scene: *LoadedScene, input: CreateEntity) !void {
     _ = try scene.spawnEntity(entity);
 }
 
-fn applyRenameEntity(scene: *LoadedScene, input: RenameEntity) ApplyError!void {
+fn applyRenameEntity(scene: *LoadedScene, input: RenameEntity) !void {
     const document = &scene.document;
     const index = try requireEntity(scene, input.id);
     document.entities[index].name = try document.arena.allocator().dupe(u8, input.name);
 }
 
-fn applyDeleteEntity(scene: *LoadedScene, input: DeleteEntity) ApplyError!void {
+fn applyDeleteEntity(scene: *LoadedScene, input: DeleteEntity) !void {
     const document = &scene.document;
     const target_index = try requireEntity(scene, input.id);
     const target_parent_id = document.entities[target_index].parent_id;
@@ -209,6 +192,7 @@ fn applyDeleteEntity(scene: *LoadedScene, input: DeleteEntity) ApplyError!void {
     var next_index: usize = 0;
     for (document.entities) |entity| {
         if (isInDeletedSet(scene, entity.id, input)) {
+            try scene.removeEntity(entity.id);
             continue;
         }
 
@@ -265,7 +249,7 @@ fn wouldReparentCreateCycle(scene: *LoadedScene, entity_id: SceneEntityId, candi
     return false;
 }
 
-fn applyReparentEntity(scene: *LoadedScene, input: ReparentEntity) ApplyError!void {
+fn applyReparentEntity(scene: *LoadedScene, input: ReparentEntity) !void {
     const document = &scene.document;
     const index = try requireEntity(scene, input.id);
 
@@ -280,14 +264,15 @@ fn applyReparentEntity(scene: *LoadedScene, input: ReparentEntity) ApplyError!vo
     document.entities[index].parent_id = input.parent_id;
 }
 
-fn applySetActiveCamera(scene: *LoadedScene, input: SetActiveCamera) ApplyError!void {
+fn applySetActiveCamera(scene: *LoadedScene, input: SetActiveCamera) !void {
     if (input.id) |id| {
         _ = try requireEntity(scene, id);
     }
     scene.document.active_camera = input.id;
+    try scene.setActiveCamera(input.id.?);
 }
 
-fn applyAddComponent(scene: *LoadedScene, input: AddComponent) ApplyError!void {
+fn applyAddComponent(scene: *LoadedScene, input: AddComponent) !void {
     if (input.component.type_id.isZero()) {
         return error.ZeroComponentTypeId;
     }
@@ -308,9 +293,10 @@ fn applyAddComponent(scene: *LoadedScene, input: AddComponent) ApplyError!void {
     new_components[entity.components.len] = try input.component.clone(gpa);
 
     entity.components = new_components;
+    try scene.addComponent(entity, input.component);
 }
 
-fn applyRemoveComponent(scene: *LoadedScene, input: RemoveComponent) ApplyError!void {
+fn applyRemoveComponent(scene: *LoadedScene, input: RemoveComponent) !void {
     const entity_index = try requireEntity(scene, input.entity);
     const entity = &scene.document.entities[entity_index];
 
@@ -327,9 +313,10 @@ fn applyRemoveComponent(scene: *LoadedScene, input: RemoveComponent) ApplyError!
     @memcpy(new_components[remove_index..], entity.components[remove_index + 1 ..]);
 
     entity.components = new_components;
+    try scene.removeComponent(entity, input.type_id);
 }
 
-fn applySetField(scene: *LoadedScene, input: SetField) ApplyError!void {
+fn applySetField(scene: *LoadedScene, input: SetField) !void {
     if (input.field_number == 0) {
         return error.ZeroFieldNumber;
     }
@@ -349,6 +336,7 @@ fn applySetField(scene: *LoadedScene, input: SetField) ApplyError!void {
 
     if (component.fieldIndex(input.field_number)) |index| {
         component.fields[index].value = value;
+        try scene.setField(entity, input.type_id, input.field_number, value);
         return;
     }
 
@@ -367,7 +355,7 @@ fn applySetField(scene: *LoadedScene, input: SetField) ApplyError!void {
     component.fields = new_fields;
 }
 
-fn applyRemoveField(scene: *LoadedScene, input: RemoveField) ApplyError!void {
+fn applyRemoveField(scene: *LoadedScene, input: RemoveField) !void {
     const entity_index = try requireEntity(scene, input.entity_id);
     const entity = &scene.document.entities[entity_index];
     const component_index = entity.componentIndex(input.type_id) orelse {
