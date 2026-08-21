@@ -10,7 +10,6 @@ pub const PixelSize = struct {
 pub const BeginFrameInput = struct {
     window: *zp.Window,
     framebuffer_size: PixelSize,
-    font_atlas: *ui.FontAtlas,
     window_size: ui.Vec2,
     ui_scale: f32 = 1,
     dt: f32,
@@ -63,7 +62,6 @@ pub fn beginFrame(self: *Backend, input: BeginFrameInput, runtime_events: []cons
         .dt = input.dt,
         .clipboard = clipboardFor(input.window),
     };
-    try self.renderer.syncFontAtlas(input.font_atlas);
     try self.renderer.beginFrameLogical(
         frame.framebuffer_size.width,
         frame.framebuffer_size.height,

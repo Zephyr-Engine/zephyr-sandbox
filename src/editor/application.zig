@@ -50,6 +50,7 @@ pub fn deinit(self: *EditorApplication) void {
 
 pub fn run(self: *EditorApplication) !void {
     const app = self.app;
+    const native_ui_scale = xwaylandScaleFactor();
     app.setDebugStatsEnabled(true);
     try app.start();
 
@@ -76,6 +77,7 @@ pub fn run(self: *EditorApplication) !void {
     const font_bytes = @embedFile("../resources/fonts/Inter-Regular.ttf");
     var font_atlas = try ui.FontAtlas.init(self.allocator, font_bytes, 1024, 1024);
     defer font_atlas.deinit();
+    try font_atlas.prewarmAscii(&.{ 10, 11, 12, 13, 14, 16, 18 }, native_ui_scale);
 
     var icons = try Icons.init(&ui_renderer, self.allocator);
     defer icons.deinit(&ui_renderer);
@@ -119,7 +121,6 @@ pub fn run(self: *EditorApplication) !void {
         };
 
         const window_size = app.window.getWindowSize();
-        const native_ui_scale = xwaylandScaleFactor();
         const runtime_events = app.beginFrame();
         const frame = try ui_backend.beginFrame(.{
             .window = app.window,
@@ -127,7 +128,6 @@ pub fn run(self: *EditorApplication) !void {
             .framebuffer_size = Backend.toPixelSize(app.window.getFramebufferSize()),
             .ui_scale = native_ui_scale,
             .dt = app.deltaTime(),
-            .font_atlas = &font_atlas,
         }, runtime_events);
         try ui_state.beginFrame(frame.toBeginFrame());
 
@@ -137,6 +137,9 @@ pub fn run(self: *EditorApplication) !void {
 
         ui_state.setTextRasterScale(frame.text_raster_scale);
         try ui_state.endFrame();
+        // endFrame can lazily rasterize new glyphs; upload them before this
+        // frame's draw instead of leaving them blank until the next frame.
+        try ui_renderer.syncFontAtlas(&font_atlas);
 
         const viewport_rect = editor.viewportRect();
         _ = try viewport_target.ensureSize(viewport_rect, frame.text_raster_scale);

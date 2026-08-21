@@ -140,7 +140,40 @@ fn rebuild(self: *Inspector, state: *ui.Ui) !void {
         .placeholder = "Entity name",
         .max_bytes = 256,
     });
-    for (entity.components) |component| try self.addComponent(state, content, component);
+    for (entity.components) |component| {
+        try self.renderComponent(state, content, component);
+    }
+
+    const btn = try ui.widgets.button(state, content, "", state.theme.style(.{
+        .width = .fill,
+        .height = .{ .px = state.theme.metrics.section_header_height },
+        .direction = .row,
+        .gap = state.theme.space.sm,
+        .padding = .{
+            .top = state.theme.space.xl,
+            .bottom = state.theme.space.xl,
+        },
+        .background = .accent,
+        .border = .accent,
+        .border_width = 1,
+        .radius = .control,
+    }));
+    errdefer state.destroySubtree(btn);
+
+    // Equal fill spacers keep the icon-and-label group centered as the
+    // inspector width changes.
+    _ = try ui.widgets.surface(state, btn, .{ .width = .fill, .height = .fill });
+    _ = try ui.widgets.text(state, btn, "+", .{
+        .height = .fill,
+        .color = .text,
+        .size = 14,
+    });
+    _ = try ui.widgets.text(state, btn, "Add component", .{
+        .height = .fill,
+        .color = .text,
+        .size = 14,
+    });
+    _ = try ui.widgets.surface(state, btn, .{ .width = .fill, .height = .fill });
 }
 
 fn clearContent(self: *Inspector, state: *ui.Ui) void {
@@ -161,7 +194,7 @@ fn selectedEntity(self: *Inspector) ?*zimp.scene.SceneEntity {
     return &loaded.document.entities[index];
 }
 
-fn addComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component: zimp.scene.SceneComponent) !void {
+fn renderComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component: zimp.scene.SceneComponent) !void {
     const schema = self.scenes.componentSchema(component.type_id) orelse {
         try self.addUnknownComponent(state, parent, component);
         return;

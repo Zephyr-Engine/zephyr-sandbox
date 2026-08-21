@@ -139,7 +139,7 @@ fn createDefaultLayout(dock: *ui.DockSpace, windows: DefaultWindows) !void {
     try dock.moveWindowToLeaf(windows.console, bottom.new_leaf);
     _ = dock.dock.setActiveWindow(bottom.new_leaf, windows.assets);
 
-    const left = try dock.splitNode(bottom.old_node, .left, 0.26);
+    const left = try dock.splitNode(bottom.old_node, .left, 0.2);
     try dock.setSplitMinimums(left.split, min_side_width, min_center_width);
     try dock.moveWindowToLeaf(windows.scene, left.new_leaf);
 }

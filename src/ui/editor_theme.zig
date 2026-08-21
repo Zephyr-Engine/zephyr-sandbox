@@ -2,6 +2,12 @@ const ui = @import("zGUI");
 
 pub fn theme() ui.Theme {
     var value = ui.theme.zephyr_dark;
+    value.palette.accent = ui.Color.rgba(0x42, 0x87, 0xf5, 255);
+    value.palette.accent_soft = ui.Color.rgba(24, 48, 88, 255);
+    value.palette.accent_hover = ui.Color.rgba(0x42, 0x87, 0xf5, 50);
+    value.palette.accent_pressed = ui.Color.rgba(0x42, 0x87, 0xf5, 70);
+    value.palette.accent_border = ui.Color.rgba(0x42, 0x87, 0xf5, 150);
+    value.palette.accent_border_strong = ui.Color.rgba(110, 164, 247, 220);
     value.radius_tokens = .{
         .control = 6,
         .card = 7,
