@@ -217,11 +217,6 @@ fn applyDeleteEntity(scene: *LoadedScene, input: DeleteEntity) !void {
     }
 
     document.entities = new_entities;
-    if (document.active_camera) |active_camera| {
-        if (isInDeletedSet(scene, active_camera, input)) {
-            document.active_camera = null;
-        }
-    }
 }
 
 fn isInDeletedSet(scene: *const LoadedScene, id: SceneEntityId, input: DeleteEntity) bool {
@@ -275,14 +270,37 @@ fn applyReparentEntity(scene: *LoadedScene, input: ReparentEntity) !void {
 
 fn applySetActiveCamera(scene: *LoadedScene, input: SetActiveCamera) !void {
     if (input.id) |id| {
-        _ = try requireEntity(scene, id);
+        const entity_index = try requireEntity(scene, id);
+        if (scene.document.entities[entity_index].componentIndex(camera_component_id) == null) {
+            return error.InvalidCamera;
+        }
     }
-    scene.document.active_camera = input.id;
+
+    if (activeCameraEntity(&scene.document)) |previous| {
+        try applyRemoveComponent(scene, .{
+            .entity = previous,
+            .type_id = active_camera_component_id,
+        });
+    }
+
     if (input.id) |id| {
-        try scene.setActiveCamera(id);
-    } else {
-        scene.clearActiveCamera();
+        try applyAddComponent(scene, .{
+            .entity = id,
+            .component = .{ .type_id = active_camera_component_id, .fields = &.{} },
+        });
     }
+}
+
+fn activeCameraEntity(document: *const SceneDocument) ?SceneEntityId {
+    var selected: ?SceneEntityId = null;
+    for (document.entities) |entity| {
+        if (entity.componentIndex(active_camera_component_id) == null) {
+            continue;
+        }
+        std.debug.assert(selected == null);
+        selected = entity.id;
+    }
+    return selected;
 }
 
 fn applyAddComponent(scene: *LoadedScene, input: AddComponent) !void {
@@ -459,6 +477,7 @@ const component_id = ComponentTypeId.parseComptime(MutationComponent.schema_meta
 const extra_component_id = ComponentTypeId.parseComptime(ExtraMutationComponent.schema_meta.id);
 const transform_component_id = ComponentTypeId.parseComptime(zp.components.TransformComponent.schema_meta.id);
 const camera_component_id = ComponentTypeId.parseComptime(zp.components.CameraComponent.schema_meta.id);
+const active_camera_component_id = ComponentTypeId.parseComptime(zp.components.ActiveCamera.schema_meta.id);
 
 fn testDocument() !SceneDocument {
     var scene = try SceneDocument.init(testing.allocator, test_scene_id, test_project_id, "Mutation test");
@@ -495,12 +514,12 @@ fn applyToClone(source: *const SceneDocument, mutation: Mutation) !SceneDocument
 fn applyToDocument(document: *SceneDocument, mutation: Mutation) !void {
     var world = zp.EcsWorld.init(testing.allocator);
     defer world.deinit();
-    inline for (.{ MutationComponent, ExtraMutationComponent, zp.components.TransformComponent, zp.components.CameraComponent }) |Component| {
+    inline for (.{ MutationComponent, ExtraMutationComponent, zp.components.TransformComponent, zp.components.CameraComponent, zp.components.ActiveCamera }) |Component| {
         _ = try world.registerType(Component, .{ .schema_hash = 0 });
     }
     var registry = zp.scene_schema.SchemaRegistry.init(testing.allocator);
     defer registry.deinit();
-    inline for (.{ MutationComponent, ExtraMutationComponent, zp.components.TransformComponent, zp.components.CameraComponent }) |Component| {
+    inline for (.{ MutationComponent, ExtraMutationComponent, zp.components.TransformComponent, zp.components.CameraComponent, zp.components.ActiveCamera }) |Component| {
         try registry.register(Component);
     }
     var assets: zp.AssetManager = undefined;
@@ -593,10 +612,10 @@ test "reparent and active camera mutations validate targets" {
 
     const set_camera = Mutation{ .set_active_camera = .{ .id = child_id } };
     try applyToDocument(&candidate, set_camera);
-    try testing.expect(candidate.active_camera.?.eql(child_id));
+    try testing.expect(candidate.entities[1].componentIndex(active_camera_component_id) != null);
     const clear_camera = Mutation{ .set_active_camera = .{ .id = null } };
     try applyToDocument(&candidate, clear_camera);
-    try testing.expect(candidate.active_camera == null);
+    try testing.expect(candidate.entities[1].componentIndex(active_camera_component_id) == null);
 }
 
 test "component mutations clone additions and reject invalid removals" {
