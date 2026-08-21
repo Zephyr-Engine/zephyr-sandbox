@@ -8,11 +8,12 @@
             .path = "../zephyr-runtime",
         },
         .zGUI = .{
-            .url = "git+https://github.com/Zephyr-Engine/zGUI.git?ref=modern#ffe7aece13c9b62e943f1f8b25b047f6570fd927",
-            .hash = "zGUI-0.0.0-LDuKkVFNDwCslZpO9Xwsne2dr7Onxsff67oKWPA5mWhd",
+            .url = "git+https://github.com/Zephyr-Engine/zGUI.git?ref=modern#df0e1a4bfe3b372481d34be8e3cd4d483b101b9c",
+            .hash = "zGUI-0.0.0-LDuKkSHjDwBlxXe9542LcGsMAsPCY-DtttDQHODZOSqf",
         },
         .zimp = .{
-            .path = "../zimp",
+            .url = "git+https://github.com/Zephyr-Engine/zimp.git#1edc8555be245fadbfef36afcbb7be4abe7fe69b",
+            .hash = "zimp-0.0.0-jO8AWrWREwDzaeRBnh8vaDih26snFgDblAfrQJsF-oo3",
         },
     },
     .paths = .{

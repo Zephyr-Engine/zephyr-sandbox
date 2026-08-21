@@ -1,4 +1,6 @@
 const zp = @import("zephyr_runtime");
+const zimp = @import("zimp");
+
 const SceneMutation = @import("scene_mutation.zig").Mutation;
 const SceneInputCapture = @import("../ui/scene_input.zig");
 const EditorPlayback = @import("../state/play_state.zig");
@@ -50,6 +52,11 @@ pub fn openScene(self: *SceneController, path: []const u8) !void {
 
 pub fn activeDocument(self: *SceneController) ?*zp.scene_schema.LoadedScene {
     return @constCast(self.runtime.world.activeSceneDocument());
+}
+
+pub fn componentSchema(self: *const SceneController, id: zp.ComponentTypeId) ?*const zimp.scene.ComponentSchema {
+    const codec = self.runtime.schemas.get(id) orelse return null;
+    return &codec.schema;
 }
 
 pub fn commitSceneMutation(self: *SceneController, mutation: SceneMutation) !void {

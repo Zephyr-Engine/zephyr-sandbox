@@ -57,7 +57,11 @@ pub fn init(
         },
     ));
 
-    const inspector_window = try addPanel(&workspace, state, inspector.descriptor, inspector.init());
+    const inspector_window = try addPanel(&workspace, state, inspector.descriptor, inspector.init(.{
+        .allocator = allocator,
+        .scenes = ctx.sceneController(),
+    }));
+
     const assets_window = try addPanel(&workspace, state, assets.descriptor, assets.init(.{
         .allocator = allocator,
         .project = ctx.projectModel(),

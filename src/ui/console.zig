@@ -21,8 +21,8 @@ pub fn mount(self: *Console, state: *ui.Ui, parent: ui.NodeId, _: panel.Services
     const root_node = try ui.widgets.column(state, parent, .{
         .width = .fill,
         .height = .fill,
-        .gap = 8,
-        .padding = .{ .left = 12, .right = 12, .top = 10, .bottom = 10 },
+        .gap = state.theme.space.sm,
+        .padding = .{ .left = state.theme.space.xl, .right = state.theme.space.xl, .top = state.theme.space.lg, .bottom = state.theme.space.lg },
         .background = .shell,
         .border = .stroke_soft,
         .border_edges = .{ .top = 1 },
@@ -31,13 +31,13 @@ pub fn mount(self: *Console, state: *ui.Ui, parent: ui.NodeId, _: panel.Services
 
     const header = try ui.widgets.row(state, root_node, .{
         .width = .fill,
-        .height = .{ .px = 28 },
-        .gap = 8,
+        .height = .{ .px = state.theme.metrics.compact_control_height },
+        .gap = state.theme.space.sm,
     });
     _ = try ui.widgets.text(state, header, "Console", .{
         .width = .{ .px = 72 },
         .height = .fill,
-        .padding = .{ .top = 6 },
+        .padding = .{ .top = state.theme.space.sm },
         .size = 14,
     });
 
