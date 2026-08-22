@@ -1,5 +1,6 @@
 const zp = @import("zephyr_runtime");
 const zimp = @import("zimp");
+const std = @import("std");
 
 const SceneMutation = @import("scene_mutation.zig").Mutation;
 const SceneInputCapture = @import("../ui/scene_input.zig");
@@ -57,6 +58,7 @@ pub fn openScene(self: *SceneController, path: []const u8) !void {
     var document = try self.project.loadScene(path);
     errdefer document.deinit();
 
+    try deactivateEditorCamera(&self.runtime.world.world, self.playback.editor_camera);
     try self.runtime.world.startScene(self.runtime.allocator, &self.runtime.assets, document);
     self.playback.scene_camera = zp.activeCamera(&self.runtime.world.world) orelse self.playback.editor_camera;
     try zp.setActiveCamera(&self.runtime.world.world, self.playback.editor_camera);
@@ -71,12 +73,16 @@ pub fn openScene(self: *SceneController, path: []const u8) !void {
 
 pub fn saveScene(self: *SceneController) !void {
     const active_scene = self.activeDocument() orelse return error.NoActiveScene;
-    // TODO: only save if marked dirty
-    try self.project.saveScene(self.active_scene.?.file_name, &active_scene.document);
+    if (self.active_scene) |*scene| {
+        if (scene.dirty) {
+            try self.project.saveScene(scene.file_name, &active_scene.document);
+            scene.dirty = false;
+        }
+    }
 }
 
-pub fn markDirty(self: *const SceneController) void {
-    if (self.active_scene) |scene| {
+pub fn markDirty(self: *SceneController) void {
+    if (self.active_scene) |*scene| {
         scene.dirty = true;
     }
 }
@@ -94,6 +100,7 @@ pub fn commitSceneMutation(self: *SceneController, mutation: SceneMutation) !voi
     const active_scene = self.activeDocument();
     if (active_scene) |scene| {
         try mutation.apply(scene);
+        self.markDirty();
         self.revision_number +%= 1;
     }
 }
@@ -178,4 +185,36 @@ fn optionalEntityEql(a: ?zp.SceneEntityId, b: ?zp.SceneEntityId) bool {
         return false;
     }
     return b == null;
+}
+
+fn deactivateEditorCamera(world: *zp.EcsWorld, editor_camera: zp.EntityID) !void {
+    if (world.hasComponent(editor_camera, zp.ActiveCamera)) {
+        try world.removeComponent(editor_camera, zp.ActiveCamera);
+    }
+}
+
+test "opening a scene removes the persistent editor camera active marker" {
+    var world = zp.EcsWorld.init(std.testing.allocator);
+    defer world.deinit();
+    inline for (.{ zp.components.TransformComponent, zp.components.CameraComponent, zp.ActiveCamera }) |Component| {
+        _ = try world.registerType(Component, .{ .schema_hash = 0 });
+    }
+
+    const editor_camera = try world.spawnWith(.{
+        zp.components.TransformComponent{},
+        zp.components.CameraComponent{},
+    });
+    const scene_camera = try world.spawnWith(.{
+        zp.components.TransformComponent{},
+        zp.components.CameraComponent{},
+    });
+    try zp.setActiveCamera(&world, editor_camera);
+
+    // Scene deserialization can add this marker directly, before the editor
+    // gets the chance to switch active cameras back to its own camera.
+    try world.addComponent(scene_camera, zp.ActiveCamera, .{});
+    try deactivateEditorCamera(&world, editor_camera);
+
+    try std.testing.expect(!world.hasComponent(editor_camera, zp.ActiveCamera));
+    try std.testing.expectEqual(scene_camera, zp.activeCamera(&world).?);
 }

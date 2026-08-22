@@ -133,3 +133,30 @@ test "directory listings own paths and distinguish files from folders" {
     try std.testing.expect(saw_folder);
     try std.testing.expect(saw_file);
 }
+
+test "directory listings expose roots and treat missing folders as empty" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const project = zp.Project{
+        .manifest = .{
+            .name = "Test",
+            .project_id = .parseComptime("addf9ad5-9d5d-44d6-8590-7be77e487892"),
+            .assets_dir = "content",
+            .scenes_dir = "levels",
+        },
+        .root_dir = tmp.dir,
+    };
+    const model = ProjectModel.init(std.testing.allocator, std.testing.io, &project);
+
+    var root_listing = try model.listDirectory("");
+    defer root_listing.deinit();
+    try std.testing.expectEqual(@as(usize, 2), root_listing.items.items.len);
+    try std.testing.expectEqualStrings("content", root_listing.items.items[0].path);
+    try std.testing.expectEqualStrings("levels", root_listing.items.items[1].path);
+    try std.testing.expectEqual(ItemKind.folder, root_listing.items.items[0].kind);
+
+    var missing = try model.listDirectory("does-not-exist");
+    defer missing.deinit();
+    try std.testing.expectEqual(@as(usize, 0), missing.items.items.len);
+}

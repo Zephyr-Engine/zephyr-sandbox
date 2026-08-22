@@ -94,3 +94,25 @@ test "keyboardDirection cancels opposing keys" {
     try testing.expectEqual(@as(f32, 0), direction.z);
     try testing.expectEqual(@as(f32, 0), direction.x);
 }
+
+test "keyboard movement system applies delta time and sprint speed to matching entities" {
+    var world = zp.EcsWorld.init(testing.allocator);
+    defer world.deinit();
+    _ = try world.registerType(TransformComponent, .{ .schema_hash = 0 });
+    _ = try world.registerType(KeyboardMovementComponent, .{ .schema_hash = 0 });
+    try world.setResource(zp.Input, inputWithKeysDown(&.{ .W, .LeftShift }));
+    try world.setResource(zp.DeltaTime, .{ .seconds = 1 });
+
+    const moving = try world.spawnWith(.{
+        TransformComponent{},
+        KeyboardMovementComponent{},
+    });
+    const stationary = try world.spawnWith(.{TransformComponent{}});
+    var commands = zp.CommandBuffer.init(&world);
+    defer commands.deinit();
+
+    try keyboardMovementSystem(&world, &commands);
+
+    try testing.expectApproxEqAbs(@as(f32, -5), world.getComponent(moving, TransformComponent).?.position.z, 0.0001);
+    try testing.expectApproxEqAbs(@as(f32, 0), world.getComponent(stationary, TransformComponent).?.position.z, 0.0001);
+}

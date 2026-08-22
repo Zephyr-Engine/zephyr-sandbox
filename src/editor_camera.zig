@@ -62,3 +62,21 @@ test "editor camera orientation uses controller yaw and pitch" {
     try std.testing.expectApproxEqAbs(@as(f32, 0), forward.y, 0.0001);
     try std.testing.expectApproxEqAbs(@as(f32, 0), forward.z, 0.0001);
 }
+
+test "editor camera clamps look pitch and applies scroll zoom" {
+    var transform: zp.components.TransformComponent = .{};
+    var controller: editor_components.FlyCameraController = .{};
+    var input: zp.Input = .{};
+
+    input.applyEvent(.{ .MousePressed = .Right });
+    input.applyEvent(.{ .MouseMove = .{ .x = 0, .y = 0 } });
+    input.applyEvent(.{ .MouseMove = .{ .x = 0, .y = 1_000_000 } });
+    input.applyEvent(.{ .MouseScroll = .{ .x = 0, .y = 2 } });
+    update(&transform, &controller, &input);
+
+    try std.testing.expectApproxEqAbs(-max_pitch, controller.pitch, 0.0001);
+    const expected_position = transform.forward().scale(2);
+    try std.testing.expectApproxEqAbs(expected_position.x, transform.position.x, 0.0001);
+    try std.testing.expectApproxEqAbs(expected_position.y, transform.position.y, 0.0001);
+    try std.testing.expectApproxEqAbs(expected_position.z, transform.position.z, 0.0001);
+}

@@ -203,3 +203,22 @@ test "invocation propagates action failures" {
 
     try std.testing.expectError(error.ActionFailed, registry.invoke(ids.play));
 }
+
+test "registry rejects duplicate actions and unregistering makes them unavailable" {
+    const State = struct {
+        fn succeed(_: *@This()) !void {}
+    };
+
+    var state: State = .{};
+    var registry = Registry.init(std.testing.allocator);
+    defer registry.deinit();
+    const action = Action.bind("Play", &state, State.succeed);
+
+    try registry.register(ids.play, action);
+    try std.testing.expectError(error.DuplicateAction, registry.register(ids.play, action));
+    registry.unregister(ids.play);
+    try std.testing.expect(registry.get(ids.play) == null);
+    try std.testing.expect(!(try registry.invoke(ids.play)));
+    try std.testing.expect(!registry.enabled(ids.play));
+    try std.testing.expect(!registry.checked(ids.play));
+}
