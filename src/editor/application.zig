@@ -70,6 +70,7 @@ pub fn run(self: *EditorApplication) !void {
     const file = try native_menu.addMenu("File");
     try native_menu.addItem(file, "New Project", actions.ids.new_project);
     try native_menu.addItem(file, "Open Project", actions.ids.open_project);
+    try native_menu.addItem(file, "Save", actions.ids.save_project);
 
     var ui_renderer = try ui.OpenGlRenderer.init(self.allocator, zp.Window.getProcAddress);
     defer ui_renderer.deinit();

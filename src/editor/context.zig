@@ -101,8 +101,8 @@ fn openProject(self: *EditorContext) !void {
     }
 }
 
-fn saveProject(_: *EditorContext) !void {
-    std.log.info("Save Project selected (project saving is not implemented yet)", .{});
+fn saveProject(self: *EditorContext) !void {
+    try self.scene.saveScene();
 }
 
 fn onNewProjectDirectory(self: *EditorContext, directory: []const u8) !void {

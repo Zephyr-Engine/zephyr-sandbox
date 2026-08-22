@@ -11,10 +11,6 @@
             .url = "git+https://github.com/Zephyr-Engine/zGUI.git?ref=modern#fb183da787bfa82b16a682d82b040f08cfd9edef",
             .hash = "zGUI-0.0.0-LDuKkcdzEAABhHN_Nxl9ToQPjt7NUlEIa8GIxvzOC_Hy",
         },
-        .zimp = .{
-            .url = "git+https://github.com/Zephyr-Engine/zimp.git#5a7d535b80cd9c9471a05ac736556106075433b2",
-            .hash = "zimp-0.0.0-jO8AWoONEwCqmEiTXYsYT4KlD8Q9SDHkHDP-M1xir1SE",
-        },
     },
     .paths = .{
         "build.zig",

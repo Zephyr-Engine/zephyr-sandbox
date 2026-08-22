@@ -80,6 +80,10 @@ pub fn loadScene(self: *const ProjectModel, path: []const u8) !zimp.scene.SceneD
     return self.project.loadScene(self.allocator, self.io, path);
 }
 
+pub fn saveScene(self: *const ProjectModel, path: []const u8, document: *const zimp.scene.SceneDocument) !void {
+    return self.project.saveScene(self.allocator, self.io, path, document);
+}
+
 fn appendItem(allocator: std.mem.Allocator, items: *std.ArrayList(Item), path: []const u8, kind: ItemKind) !void {
     try items.append(allocator, .{
         .path = try allocator.dupe(u8, path),

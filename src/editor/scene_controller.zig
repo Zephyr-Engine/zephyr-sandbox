@@ -11,19 +11,34 @@ const Runtime = zp.Runtime(Game.definition);
 
 const SceneController = @This();
 
+const ActiveScene = struct {
+    file_name: []const u8,
+    dirty: bool,
+};
+
 project: *ProjectModel,
 runtime: *Runtime,
 playback: EditorPlayback,
 input_capture: SceneInputCapture = .{},
+active_scene: ?ActiveScene = null,
 selected_entity: ?zp.SceneEntityId = null,
 revision_number: u64 = 0,
 
 pub fn init(project: *ProjectModel, runtime: *Runtime) !SceneController {
-    return .{
+    var controller = SceneController{
         .project = project,
         .runtime = runtime,
         .playback = try EditorPlayback.init(&runtime.world),
     };
+
+    if (project.project.manifest.default_scene) |scene| {
+        controller.active_scene = .{
+            .file_name = scene,
+            .dirty = false,
+        };
+    }
+
+    return controller;
 }
 
 pub fn preparePlayback(runtime: *Runtime) !EditorPlayback {
@@ -48,6 +63,22 @@ pub fn openScene(self: *SceneController, path: []const u8) !void {
 
     self.selected_entity = null;
     self.revision_number +%= 1;
+    self.active_scene = .{
+        .file_name = path,
+        .dirty = false,
+    };
+}
+
+pub fn saveScene(self: *SceneController) !void {
+    const active_scene = self.activeDocument() orelse return error.NoActiveScene;
+    // TODO: only save if marked dirty
+    try self.project.saveScene(self.active_scene.?.file_name, &active_scene.document);
+}
+
+pub fn markDirty(self: *const SceneController) void {
+    if (self.active_scene) |scene| {
+        scene.dirty = true;
+    }
 }
 
 pub fn activeDocument(self: *SceneController) ?*zp.scene_schema.LoadedScene {
