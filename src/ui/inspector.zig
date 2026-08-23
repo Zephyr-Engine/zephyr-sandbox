@@ -26,6 +26,7 @@ pub const Icons = struct {
 const ComponentSection = struct {
     collapsible: ui.Collapsible,
     menu_trigger: ui.NodeId,
+    component_id: zimp.ComponentTypeId,
 };
 
 allocator: std.mem.Allocator,
@@ -39,6 +40,7 @@ components: std.ArrayList(ComponentSection) = .empty,
 component_menu: ?ui.SelectionList = null,
 fields: std.ArrayList(InspectorField) = .empty,
 scene_revision: u64,
+component_id: ?zimp.ComponentTypeId = null,
 
 pub const Dependencies = struct {
     allocator: std.mem.Allocator,
@@ -123,7 +125,15 @@ pub fn update(self: *Inspector, state: *ui.Ui, _: panel.Frame) !void {
     }
 
     if (self.component_menu) |*menu| {
-        _ = try menu.update(state);
+        if (try menu.update(state)) |index| {
+            switch (index) {
+                0 => try self.scenes.commitSceneMutation(.{ .remove_component = .{
+                    .entity = entity.id,
+                    .type_id = self.component_id.?,
+                } }),
+                else => {},
+            }
+        }
     }
 
     for (self.components.items) |*component| {
@@ -132,6 +142,7 @@ pub fn update(self: *Inspector, state: *ui.Ui, _: panel.Frame) !void {
             state.requestCursor(.hand);
         }
         if (state.activated(component.menu_trigger)) {
+            self.component_id = component.component_id;
             try self.openComponentMenu(state, component.menu_trigger);
         }
     }
@@ -284,6 +295,7 @@ fn renderComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component
     try self.components.append(self.allocator, .{
         .collapsible = section,
         .menu_trigger = menu_trigger,
+        .component_id = component.type_id,
     });
 }
 
@@ -305,6 +317,7 @@ fn addUnknownComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, compo
     try self.components.append(self.allocator, .{
         .collapsible = section,
         .menu_trigger = menu_trigger,
+        .component_id = component.type_id,
     });
 }
 
