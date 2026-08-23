@@ -126,6 +126,8 @@ pub fn closePanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !void {
 pub fn update(self: *Workspace, state: *ui.Ui, frame: panel.Frame) !void {
     for (self.entries.items) |*item| {
         try item.panel.update(state, frame);
+        if (item.window == ui.invalid_window) continue;
+        try self.dock.setWindowTitle(item.window, item.panel.title());
     }
 }
 

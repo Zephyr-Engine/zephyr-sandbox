@@ -87,6 +87,14 @@ pub fn markDirty(self: *SceneController) void {
     }
 }
 
+pub fn isDirty(self: *const SceneController) bool {
+    if (self.active_scene) |scene| {
+        return scene.dirty;
+    }
+
+    return false;
+}
+
 pub fn activeDocument(self: *SceneController) ?*zp.scene_schema.LoadedScene {
     return @constCast(self.runtime.world.activeSceneDocument());
 }

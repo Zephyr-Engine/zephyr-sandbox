@@ -120,6 +120,10 @@ pub fn root(self: *const Inspector) ui.NodeId {
     return self.root_node;
 }
 
+pub fn title(self: *const Inspector) []const u8 {
+    return if (self.scenes.isDirty()) "● Inspector" else "Inspector";
+}
+
 fn rebuild(self: *Inspector, state: *ui.Ui) !void {
     self.clearContent(state);
     const content = try ui.widgets.column(state, self.body_node, .{
