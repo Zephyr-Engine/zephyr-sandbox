@@ -53,7 +53,7 @@ pub fn mount(self: *Viewport, state: *ui.Ui, parent: ui.NodeId, services: panel.
             .width = .fill,
             .height = .fill,
             .background = .viewport,
-            .border = .stroke,
+            .border = .stroke_soft,
             .border_width = 1,
             .radius = .viewport,
         }),

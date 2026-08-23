@@ -184,7 +184,7 @@ fn rebuild(self: *Inspector, state: *ui.Ui) !void {
     const content = try ui.widgets.column(state, self.body_node, .{
         .width = .fill,
         .height = .hug,
-        .gap = state.theme.space.lg,
+        .gap = state.theme.space.md,
         .background = .transparent,
     });
     errdefer state.destroySubtree(content);
@@ -258,7 +258,16 @@ fn renderComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component
         return;
     };
 
-    var section = try ui.Collapsible.init(state, parent, schema.display_name, .{});
+    var section = try ui.Collapsible.init(state, parent, schema.display_name, .{
+        .surface = .panel_soft,
+        .border = .stroke_soft,
+        .body_gap = state.theme.space.sm,
+        .body_padding = .{
+            .left = state.theme.space.lg,
+            .right = state.theme.space.lg,
+            .bottom = state.theme.space.lg,
+        },
+    });
     errdefer section.deinit(state);
     const menu_trigger = try self.addComponentMenuTrigger(state, &section);
     const body = section.body();

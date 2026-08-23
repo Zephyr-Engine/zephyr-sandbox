@@ -18,7 +18,7 @@ pub const ViewportStats = struct {
         errdefer state.destroySubtree(placement);
         _ = try ui.widgets.spacer(state, placement);
         const card = try ui.widgets.surface(state, placement, .{
-            .width = .{ .px = 120 },
+            .width = .{ .px = 128 },
             .height = .{ .px = 54 },
             .padding = .{
                 .left = state.theme.space.lg,
@@ -26,8 +26,8 @@ pub const ViewportStats = struct {
                 .top = state.theme.space.md,
                 .bottom = state.theme.space.md,
             },
-            .background = .overlay_soft,
-            .border = .stroke_soft,
+            .background = .overlay,
+            .border = .overlay_stroke,
             .border_width = 1,
             .radius = .control,
         });

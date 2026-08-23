@@ -23,8 +23,8 @@ pub const ViewportToolbar = struct {
         const padding = state.theme.space.xs;
         const placement = try ui.widgets.row(state, parent, .{
             .width = .fill,
-            .height = .{ .px = 48 },
-            .padding = .{ .top = state.theme.space.md },
+            .height = .{ .px = 52 },
+            .padding = .{ .top = state.theme.space.lg },
             .background = .transparent,
         });
         errdefer state.destroySubtree(placement);
@@ -34,7 +34,7 @@ pub const ViewportToolbar = struct {
             .height = .{ .px = control_size + padding * 2 },
             .gap = gap,
             .padding = ui.Edges.all(padding),
-            .background = .overlay,
+            .background = .overlay_soft,
             .border = .overlay_stroke,
             .border_width = 1,
             .radius = .pill,
