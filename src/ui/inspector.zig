@@ -16,26 +16,41 @@ pub const descriptor: panel.Descriptor = .{
 
 const Value = zimp.scene.Value;
 const Inspector = @This();
+const component_menu_width: f32 = 220;
+const remove_component_label = "Remove Component";
+
+pub const Icons = struct {
+    component_menu: ui.TextureHandle,
+};
+
+const ComponentSection = struct {
+    collapsible: ui.Collapsible,
+    menu_trigger: ui.NodeId,
+};
 
 allocator: std.mem.Allocator,
 scenes: *SceneController,
+icons: Icons,
 root_node: ui.NodeId = ui.invalid_node,
 body_node: ui.NodeId = ui.invalid_node,
 content_node: ui.NodeId = ui.invalid_node,
 entity_name: ?ui.TextField = null,
-components: std.ArrayList(ui.Collapsible) = .empty,
+components: std.ArrayList(ComponentSection) = .empty,
+component_menu: ?ui.SelectionList = null,
 fields: std.ArrayList(InspectorField) = .empty,
 scene_revision: u64,
 
 pub const Dependencies = struct {
     allocator: std.mem.Allocator,
     scenes: *SceneController,
+    icons: Icons,
 };
 
 pub fn init(dependencies: Dependencies) Inspector {
     return .{
         .allocator = dependencies.allocator,
         .scenes = dependencies.scenes,
+        .icons = dependencies.icons,
         .scene_revision = dependencies.scenes.revision(),
     };
 }
@@ -46,9 +61,10 @@ pub fn deinit(self: *Inspector) void {
 }
 
 pub fn mount(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, _: panel.Services) !void {
-    const root_node = try ui.widgets.column(state, parent, .{
+    const root_node = try ui.widgets.surface(state, parent, .{
         .width = .fill,
         .height = .fill,
+        .direction = .absolute,
         .background = .shell,
     });
     errdefer state.destroySubtree(root_node);
@@ -69,6 +85,19 @@ pub fn mount(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, _: panel.Servic
 
     self.root_node = root_node;
     self.body_node = body_node;
+    self.component_menu = try ui.SelectionList.init(self.allocator, state, root_node);
+    errdefer {
+        self.component_menu.?.deinit(state);
+        self.component_menu = null;
+    }
+
+    try self.component_menu.?.setItems(state, &.{remove_component_label});
+
+    const remove_component_item = self.component_menu.?.item_nodes.items[0];
+    var remove_component_style = state.nodeStyle(remove_component_item) orelse return error.InvalidNode;
+    remove_component_style.foreground = state.theme.color(.danger);
+
+    try state.setStyle(remove_component_item, remove_component_style);
     try self.rebuild(state);
 }
 
@@ -93,7 +122,20 @@ pub fn update(self: *Inspector, state: *ui.Ui, _: panel.Frame) !void {
         }
     }
 
-    for (self.components.items) |*component| _ = try component.update(state);
+    if (self.component_menu) |*menu| {
+        _ = try menu.update(state);
+    }
+
+    for (self.components.items) |*component| {
+        _ = try component.collapsible.update(state);
+        if (state.input.hovered == component.menu_trigger) {
+            state.requestCursor(.hand);
+        }
+        if (state.activated(component.menu_trigger)) {
+            try self.openComponentMenu(state, component.menu_trigger);
+        }
+    }
+
     for (self.fields.items) |*field| {
         if (try field.update(state)) |value| {
             try self.scenes.commitSceneMutation(fieldMutation(
@@ -111,6 +153,8 @@ pub fn update(self: *Inspector, state: *ui.Ui, _: panel.Frame) !void {
 
 pub fn unmount(self: *Inspector, state: *ui.Ui) void {
     self.clearContent(state);
+    if (self.component_menu) |*menu| menu.deinit(state);
+    self.component_menu = null;
     state.destroySubtree(self.root_node);
     self.root_node = ui.invalid_node;
     self.body_node = ui.invalid_node;
@@ -164,8 +208,6 @@ fn rebuild(self: *Inspector, state: *ui.Ui) !void {
     }));
     errdefer state.destroySubtree(btn);
 
-    // Equal fill spacers keep the icon-and-label group centered as the
-    // inspector width changes.
     _ = try ui.widgets.surface(state, btn, .{ .width = .fill, .height = .fill });
     _ = try ui.widgets.text(state, btn, "+", .{
         .height = .fill,
@@ -181,11 +223,12 @@ fn rebuild(self: *Inspector, state: *ui.Ui) !void {
 }
 
 fn clearContent(self: *Inspector, state: *ui.Ui) void {
+    if (self.component_menu) |*menu| menu.close(state) catch {};
     if (self.entity_name) |*name| name.deinit(state);
     self.entity_name = null;
     for (self.fields.items) |*field| field.deinit(state);
     self.fields.clearRetainingCapacity();
-    for (self.components.items) |*component| component.deinit(state);
+    for (self.components.items) |*component| component.collapsible.deinit(state);
     self.components.clearRetainingCapacity();
     if (self.content_node != ui.invalid_node) state.destroySubtree(self.content_node);
     self.content_node = ui.invalid_node;
@@ -206,6 +249,7 @@ fn renderComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component
 
     var section = try ui.Collapsible.init(state, parent, schema.display_name, .{});
     errdefer section.deinit(state);
+    const menu_trigger = try self.addComponentMenuTrigger(state, &section);
     const body = section.body();
     _ = try ui.widgets.divider(state, body);
 
@@ -237,7 +281,10 @@ fn renderComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component
             .size = 11,
         });
     }
-    try self.components.append(self.allocator, section);
+    try self.components.append(self.allocator, .{
+        .collapsible = section,
+        .menu_trigger = menu_trigger,
+    });
 }
 
 fn addUnknownComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, component: zimp.scene.SceneComponent) !void {
@@ -247,6 +294,7 @@ fn addUnknownComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, compo
         .title_color = .warning,
     });
     errdefer section.deinit(state);
+    const menu_trigger = try self.addComponentMenuTrigger(state, &section);
     const id_text = component.type_id.toString();
     _ = try ui.widgets.text(state, section.body(), &id_text, .{
         .width = .fill,
@@ -254,7 +302,40 @@ fn addUnknownComponent(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, compo
         .color = .text_muted,
         .size = 10,
     });
-    try self.components.append(self.allocator, section);
+    try self.components.append(self.allocator, .{
+        .collapsible = section,
+        .menu_trigger = menu_trigger,
+    });
+}
+
+fn addComponentMenuTrigger(self: *const Inspector, state: *ui.Ui, section: *const ui.Collapsible) !ui.NodeId {
+    var header_style = state.nodeStyle(section.header_node) orelse return error.InvalidNode;
+    header_style.padding.right = 0;
+    try state.setStyle(section.header_node, header_style);
+
+    return ui.widgets.iconButton(state, section.header_node, .{
+        .texture = self.icons.component_menu,
+        .tint = state.theme.color(.text_muted),
+        .style = state.theme.style(.{
+            .width = .{ .px = state.theme.metrics.section_header_height },
+            .height = .{ .px = state.theme.metrics.section_header_height },
+            .background = .transparent,
+            .hover_background = .panel_soft,
+            .pressed_background = .control,
+            .border_width = 0,
+            .radius = .control,
+        }),
+    });
+}
+
+fn openComponentMenu(self: *Inspector, state: *ui.Ui, trigger: ui.NodeId) !void {
+    const menu = &self.component_menu.?;
+    const root_bounds = state.bounds(self.root_node) orelse return;
+    const trigger_bounds = state.bounds(trigger) orelse return;
+    try menu.show(state, .{
+        .x = trigger_bounds.x - root_bounds.x + trigger_bounds.w - component_menu_width,
+        .y = trigger_bounds.y - root_bounds.y + trigger_bounds.h,
+    });
 }
 
 fn addEmptyState(state: *ui.Ui, parent: ui.NodeId, has_scene: bool) !void {
