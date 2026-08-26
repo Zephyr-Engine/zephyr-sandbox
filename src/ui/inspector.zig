@@ -35,6 +35,10 @@ icons: Icons,
 root_node: ui.NodeId = ui.invalid_node,
 body_node: ui.NodeId = ui.invalid_node,
 content_node: ui.NodeId = ui.invalid_node,
+overlay_node: ui.NodeId = ui.invalid_node,
+add_component_button: ui.NodeId = ui.invalid_node,
+component_list: ?ui.SelectionList = null,
+addable_component_ids: std.ArrayList(zimp.ComponentTypeId) = .empty,
 entity_name: ?ui.TextField = null,
 components: std.ArrayList(ComponentSection) = .empty,
 component_menu: ?ui.SelectionList = null,
@@ -58,6 +62,7 @@ pub fn init(dependencies: Dependencies) Inspector {
 }
 
 pub fn deinit(self: *Inspector) void {
+    self.addable_component_ids.deinit(self.allocator);
     self.components.deinit(self.allocator);
     self.fields.deinit(self.allocator);
 }
@@ -84,6 +89,13 @@ pub fn mount(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, _: panel.Servic
         .background = .shell,
         .overflow_y = .scroll,
     });
+    const overlay_node = try ui.widgets.surface(state, root_node, .{
+        .width = .fill,
+        .height = .fill,
+        .direction = .absolute,
+        .background = .transparent,
+    });
+    const component_list = try ui.widgets.SelectionList.init(self.allocator, state, overlay_node);
 
     self.root_node = root_node;
     self.body_node = body_node;
@@ -100,6 +112,8 @@ pub fn mount(self: *Inspector, state: *ui.Ui, parent: ui.NodeId, _: panel.Servic
     remove_component_style.foreground = state.theme.color(.danger);
 
     try state.setStyle(remove_component_item, remove_component_style);
+    self.overlay_node = overlay_node;
+    self.component_list = component_list;
     try self.rebuild(state);
 }
 
@@ -160,15 +174,36 @@ pub fn update(self: *Inspector, state: *ui.Ui, _: panel.Frame) !void {
             self.scene_revision = self.scenes.revision();
         }
     }
+
+    const opened_component_list = state.activated(self.add_component_button);
+    if (opened_component_list) {
+        try self.showAddComponentList(state, entity);
+    }
+
+    if (!opened_component_list) {
+        if (self.component_list) |*component_list| {
+            if (try component_list.update(state)) |index| {
+                const component_id = self.addable_component_ids.items[index];
+                try self.scenes.commitSceneMutation(.{ .add_component = .{
+                    .entity = entity.id,
+                    .component = .{ .type_id = component_id, .fields = &.{} },
+                } });
+            }
+        }
+    }
 }
 
 pub fn unmount(self: *Inspector, state: *ui.Ui) void {
     self.clearContent(state);
     if (self.component_menu) |*menu| menu.deinit(state);
     self.component_menu = null;
+    if (self.component_list) |*component_list| component_list.deinit(state);
+
+    self.component_list = null;
     state.destroySubtree(self.root_node);
     self.root_node = ui.invalid_node;
     self.body_node = ui.invalid_node;
+    self.overlay_node = ui.invalid_node;
 }
 
 pub fn root(self: *const Inspector) ui.NodeId {
@@ -203,7 +238,7 @@ fn rebuild(self: *Inspector, state: *ui.Ui) !void {
         try self.renderComponent(state, content, component);
     }
 
-    const btn = try ui.widgets.button(state, content, "", state.theme.style(.{
+    self.add_component_button = try ui.widgets.button(state, content, "", state.theme.style(.{
         .width = .fill,
         .height = .{ .px = state.theme.metrics.section_header_height },
         .direction = .row,
@@ -217,20 +252,47 @@ fn rebuild(self: *Inspector, state: *ui.Ui) !void {
         .border_width = 1,
         .radius = .control,
     }));
-    errdefer state.destroySubtree(btn);
+    errdefer state.destroySubtree(self.add_component_button);
 
-    _ = try ui.widgets.surface(state, btn, .{ .width = .fill, .height = .fill });
-    _ = try ui.widgets.text(state, btn, "+", .{
+    _ = try ui.widgets.surface(state, self.add_component_button, .{ .width = .fill, .height = .fill });
+    _ = try ui.widgets.text(state, self.add_component_button, "+", .{
+        .height = .fill,
+        .margin = .{ .top = -6 },
+        .color = .text,
+        .size = 18,
+    });
+    _ = try ui.widgets.text(state, self.add_component_button, "Add component", .{
         .height = .fill,
         .color = .text,
+        .margin = .{ .top = -2 },
         .size = 14,
     });
-    _ = try ui.widgets.text(state, btn, "Add component", .{
-        .height = .fill,
-        .color = .text,
-        .size = 14,
+    _ = try ui.widgets.surface(state, self.add_component_button, .{ .width = .fill, .height = .fill });
+}
+
+fn showAddComponentList(self: *Inspector, state: *ui.Ui, entity: *const zimp.scene.SceneEntity) !void {
+    const component_list = if (self.component_list) |*list| list else return;
+    const schemas = try self.scenes.runtime.schemas.sortedSchemas(self.allocator);
+    defer self.allocator.free(schemas);
+
+    self.addable_component_ids.clearRetainingCapacity();
+    var labels: std.ArrayList([]const u8) = .empty;
+    defer labels.deinit(self.allocator);
+    for (schemas) |schema| {
+        if (entity.componentIndex(schema.id) != null) {
+            continue;
+        }
+        try self.addable_component_ids.append(self.allocator, schema.id);
+        try labels.append(self.allocator, schema.display_name);
+    }
+    try component_list.setItems(state, labels.items);
+
+    const button_bounds = state.bounds(self.add_component_button) orelse return;
+    const overlay_bounds = state.bounds(self.overlay_node) orelse return;
+    try component_list.show(state, .{
+        .x = button_bounds.x - overlay_bounds.x,
+        .y = button_bounds.y - overlay_bounds.y + button_bounds.h,
     });
-    _ = try ui.widgets.surface(state, btn, .{ .width = .fill, .height = .fill });
 }
 
 fn clearContent(self: *Inspector, state: *ui.Ui) void {
@@ -338,12 +400,12 @@ fn addComponentMenuTrigger(self: *const Inspector, state: *ui.Ui, section: *cons
     return ui.widgets.iconButton(state, section.header_node, .{
         .texture = self.icons.component_menu,
         .tint = state.theme.color(.text_muted),
+        .hover_tint = state.theme.color(.text),
+        .pressed_tint = state.theme.color(.icon_selected),
         .style = state.theme.style(.{
             .width = .{ .px = state.theme.metrics.section_header_height },
             .height = .{ .px = state.theme.metrics.section_header_height },
             .background = .transparent,
-            .hover_background = .panel_soft,
-            .pressed_background = .control,
             .border_width = 0,
             .radius = .control,
         }),
