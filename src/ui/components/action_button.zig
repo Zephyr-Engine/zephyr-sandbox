@@ -1,12 +1,12 @@
 const ui = @import("zGUI");
 
-const actions = @import("../editor/actions.zig");
+const actions = @import("../../editor/actions.zig");
 
 pub const Options = struct {
     texture: ui.TextureHandle,
     style: ui.Style,
-    tint: ui.Color = ui.Color.rgba(194, 198, 207, 255),
-    disabled_tint: ui.Color = ui.Color.rgba(112, 115, 124, 160),
+    tint: ?ui.Color = null,
+    disabled_tint: ?ui.Color = null,
     uv0: ui.Vec2 = .{},
     uv1: ui.Vec2 = .{ .x = 1, .y = 1 },
 };
@@ -30,12 +30,14 @@ pub fn create(
     comptime action_id: actions.ActionId,
     options: Options,
 ) !ActionButton {
+    const tint = options.tint orelse state.theme.color(.icon);
+    const disabled_tint = options.disabled_tint orelse state.theme.color(.icon_disabled);
     const node = try ui.widgets.iconButton(state, parent, .{
         .texture = options.texture,
         .style = options.style,
         .uv0 = options.uv0,
         .uv1 = options.uv1,
-        .tint = options.tint,
+        .tint = tint,
         .on_activate = registry.handler(action_id),
     });
     return .{
@@ -43,8 +45,8 @@ pub fn create(
         .action = action_id,
         .registry = registry,
         .texture = options.texture,
-        .tint = options.tint,
-        .disabled_tint = options.disabled_tint,
+        .tint = tint,
+        .disabled_tint = disabled_tint,
         .uv0 = options.uv0,
         .uv1 = options.uv1,
     };

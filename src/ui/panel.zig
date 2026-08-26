@@ -40,6 +40,7 @@ pub const Instance = struct {
         update: *const fn (*anyopaque, *ui.Ui, Frame) anyerror!void,
         unmount: *const fn (*anyopaque, *ui.Ui) void,
         root: *const fn (*const anyopaque) ui.NodeId,
+        title: *const fn (*const anyopaque, []const u8) []const u8,
         destroy: *const fn (*anyopaque, std.mem.Allocator) void,
     };
 
@@ -82,6 +83,10 @@ pub const Instance = struct {
         return if (self.mounted) self.vtable.root(self.object) else ui.invalid_node;
     }
 
+    pub fn title(self: *const Instance) []const u8 {
+        return self.vtable.title(self.object, self.descriptor.title);
+    }
+
     pub fn deinit(self: *Instance, state: *ui.Ui) void {
         self.unmount(state);
         self.vtable.destroy(self.object, self.allocator);
@@ -95,6 +100,7 @@ pub const Instance = struct {
                 .update = updatePanel,
                 .unmount = unmountPanel,
                 .root = panelRoot,
+                .title = panelTitle,
                 .destroy = destroyPanel,
             };
 
@@ -113,6 +119,11 @@ pub const Instance = struct {
             fn panelRoot(raw: *const anyopaque) ui.NodeId {
                 const object: *const Panel = @ptrCast(@alignCast(raw));
                 return object.root();
+            }
+
+            fn panelTitle(raw: *const anyopaque, default_title: []const u8) []const u8 {
+                const object: *const Panel = @ptrCast(@alignCast(raw));
+                return if (@hasDecl(Panel, "title")) object.title() else default_title;
             }
 
             fn destroyPanel(raw: *anyopaque, allocator: std.mem.Allocator) void {

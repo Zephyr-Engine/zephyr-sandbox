@@ -1,6 +1,7 @@
 const std = @import("std");
 const ui = @import("zGUI");
 
+const editor_theme = @import("editor_theme.zig");
 const panel = @import("panel.zig");
 
 pub const Workspace = @This();
@@ -18,7 +19,7 @@ entries: std.ArrayList(Entry) = .empty,
 index: std.AutoHashMapUnmanaged(panel.Id, usize) = .empty,
 
 pub fn init(allocator: std.mem.Allocator, state: *ui.Ui, services: panel.Services) !Workspace {
-    state.setTheme(ui.theme.zephyr_dark);
+    state.setTheme(editor_theme.theme());
     try state.setStyle(state.rootNode(), state.theme.style(.{
         .width = .fill,
         .height = .fill,
@@ -125,6 +126,8 @@ pub fn closePanel(self: *Workspace, state: *ui.Ui, id: panel.Id) !void {
 pub fn update(self: *Workspace, state: *ui.Ui, frame: panel.Frame) !void {
     for (self.entries.items) |*item| {
         try item.panel.update(state, frame);
+        if (item.window == ui.invalid_window) continue;
+        try self.dock.setWindowTitle(item.window, item.panel.title());
     }
 }
 
@@ -136,8 +139,8 @@ pub fn run(self: *Workspace, state: *ui.Ui, window_size: ui.Vec2) !ui.DockSpaceR
             .w = @max(1, window_size.x),
             .h = @max(1, window_size.y),
         },
-        .handle_thickness = 4,
-        .tab_height = 26,
+        .handle_thickness = state.theme.metrics.dock_handle_thickness,
+        .tab_height = state.theme.metrics.dock_tab_height,
     });
 }
 

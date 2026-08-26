@@ -1,7 +1,6 @@
 const std = @import("std");
+const zimp = @import("zimp");
 const zp = @import("zephyr_runtime");
-
-const LoadSceneResult = @typeInfo(@TypeOf(zp.Project.loadScene)).@"fn".return_type.?;
 
 const ProjectModel = @This();
 
@@ -77,8 +76,12 @@ pub fn isScenePath(self: *const ProjectModel, path: []const u8) bool {
     return isScenePathIn(self.project.manifest.scenes_dir, path);
 }
 
-pub fn loadScene(self: *const ProjectModel, path: []const u8) LoadSceneResult {
+pub fn loadScene(self: *const ProjectModel, path: []const u8) !zimp.scene.SceneDocument {
     return self.project.loadScene(self.allocator, self.io, path);
+}
+
+pub fn saveScene(self: *const ProjectModel, path: []const u8, document: *const zimp.scene.SceneDocument) !void {
+    return self.project.saveScene(self.allocator, self.io, path, document);
 }
 
 fn appendItem(allocator: std.mem.Allocator, items: *std.ArrayList(Item), path: []const u8, kind: ItemKind) !void {
@@ -129,4 +132,31 @@ test "directory listings own paths and distinguish files from folders" {
     }
     try std.testing.expect(saw_folder);
     try std.testing.expect(saw_file);
+}
+
+test "directory listings expose roots and treat missing folders as empty" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const project = zp.Project{
+        .manifest = .{
+            .name = "Test",
+            .project_id = .parseComptime("addf9ad5-9d5d-44d6-8590-7be77e487892"),
+            .assets_dir = "content",
+            .scenes_dir = "levels",
+        },
+        .root_dir = tmp.dir,
+    };
+    const model = ProjectModel.init(std.testing.allocator, std.testing.io, &project);
+
+    var root_listing = try model.listDirectory("");
+    defer root_listing.deinit();
+    try std.testing.expectEqual(@as(usize, 2), root_listing.items.items.len);
+    try std.testing.expectEqualStrings("content", root_listing.items.items[0].path);
+    try std.testing.expectEqualStrings("levels", root_listing.items.items[1].path);
+    try std.testing.expectEqual(ItemKind.folder, root_listing.items.items[0].kind);
+
+    var missing = try model.listDirectory("does-not-exist");
+    defer missing.deinit();
+    try std.testing.expectEqual(@as(usize, 0), missing.items.items.len);
 }

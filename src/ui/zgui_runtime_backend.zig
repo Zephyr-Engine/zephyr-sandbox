@@ -8,8 +8,8 @@ pub const PixelSize = struct {
 };
 
 pub const BeginFrameInput = struct {
+    window: *zp.Window,
     framebuffer_size: PixelSize,
-    font_atlas: *ui.FontAtlas,
     window_size: ui.Vec2,
     ui_scale: f32 = 1,
     dt: f32,
@@ -21,12 +21,14 @@ pub const Frame = struct {
     text_raster_scale: f32,
     window_size: ui.Vec2,
     dt: f32,
+    clipboard: ui.Clipboard,
 
     pub fn toBeginFrame(self: Frame) ui.BeginFrame {
         return .{
             .events = self.events,
             .window_size = self.window_size,
             .dt = self.dt,
+            .clipboard = self.clipboard,
         };
     }
 };
@@ -58,8 +60,8 @@ pub fn beginFrame(self: *Backend, input: BeginFrameInput, runtime_events: []cons
         .framebuffer_size = input.framebuffer_size,
         .text_raster_scale = framebufferScale(input.window_size, input.framebuffer_size),
         .dt = input.dt,
+        .clipboard = clipboardFor(input.window),
     };
-    try self.renderer.syncFontAtlas(input.font_atlas);
     try self.renderer.beginFrameLogical(
         frame.framebuffer_size.width,
         frame.framebuffer_size.height,
@@ -157,19 +159,83 @@ fn mapMouseButton(button: zp.MouseButton) ?ui.MouseButton {
 }
 
 fn mapKey(key: zp.Key) ui.Key {
+    const value = @intFromEnum(key);
+    if (value >= @intFromEnum(zp.Key.Num0) and value <= @intFromEnum(zp.Key.Num9)) {
+        return @enumFromInt(@intFromEnum(ui.Key.num_0) + value - @intFromEnum(zp.Key.Num0));
+    }
+    if (value >= @intFromEnum(zp.Key.A) and value <= @intFromEnum(zp.Key.Z)) {
+        return @enumFromInt(@intFromEnum(ui.Key.a) + value - @intFromEnum(zp.Key.A));
+    }
+    if (value >= @intFromEnum(zp.Key.F1) and value <= @intFromEnum(zp.Key.F25)) {
+        return @enumFromInt(@intFromEnum(ui.Key.f1) + value - @intFromEnum(zp.Key.F1));
+    }
+    if (value >= @intFromEnum(zp.Key.Kp0) and value <= @intFromEnum(zp.Key.Kp9)) {
+        return @enumFromInt(@intFromEnum(ui.Key.kp_0) + value - @intFromEnum(zp.Key.Kp0));
+    }
     return switch (key) {
+        .Space => .space,
+        .Apostrophe => .apostrophe,
+        .Comma => .comma,
+        .Minus => .minus,
+        .Period => .period,
+        .Slash => .slash,
+        .Semicolon => .semicolon,
+        .Equal => .equal,
+        .LeftBracket => .left_bracket,
+        .Backslash => .backslash,
+        .RightBracket => .right_bracket,
+        .GraveAccent => .grave_accent,
+        .World1 => .world_1,
+        .World2 => .world_2,
         .Escape => .escape,
         .Enter => .enter,
         .Tab => .tab,
         .Backspace => .backspace,
+        .Insert => .insert,
         .Delete => .delete,
         .Left => .left,
         .Right => .right,
         .Up => .up,
         .Down => .down,
-        .A => .a,
-        .B => .b,
-        .C => .c,
+        .PageUp => .page_up,
+        .PageDown => .page_down,
+        .Home => .home,
+        .End => .end,
+        .CapsLock => .caps_lock,
+        .ScrollLock => .scroll_lock,
+        .NumLock => .num_lock,
+        .PrintScreen => .print_screen,
+        .Pause => .pause,
+        .KpDecimal => .kp_decimal,
+        .KpDivide => .kp_divide,
+        .KpMultiply => .kp_multiply,
+        .KpSubtract => .kp_subtract,
+        .KpAdd => .kp_add,
+        .KpEnter => .kp_enter,
+        .KpEqual => .kp_equal,
+        .LeftShift => .left_shift,
+        .LeftControl => .left_control,
+        .LeftAlt => .left_alt,
+        .LeftSuper => .left_super,
+        .RightShift => .right_shift,
+        .RightControl => .right_control,
+        .RightAlt => .right_alt,
+        .RightSuper => .right_super,
+        .Menu => .menu,
         else => .unknown,
     };
+}
+
+fn clipboardFor(window: *zp.Window) ui.Clipboard {
+    return .{ .context = window, .read_fn = clipboardRead, .write_fn = clipboardWrite };
+}
+
+fn clipboardRead(context: ?*anyopaque) []const u8 {
+    const window: *zp.Window = @ptrCast(@alignCast(context orelse return ""));
+    return window.getClipboard();
+}
+
+fn clipboardWrite(context: ?*anyopaque, text: []const u8) void {
+    const window: *zp.Window = @ptrCast(@alignCast(context orelse return));
+    window.setClipboard(text);
 }
